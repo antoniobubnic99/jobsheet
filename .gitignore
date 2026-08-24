@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+
+# Node / frontend
+node_modules/
+web/dist/
+src/jobsheet/web/*
+!src/jobsheet/web/.gitkeep
+
+# Scratch space for throwaway scripts
+.scratch/
+
+# User data. A generated workbook holds the user's own notes and application
+# history -- it is theirs, and it never belongs in version control.
+*.xlsx
+*.xlsm
+~$*.xlsx
+jobsheet.db
+jobsheet.db-*
+backups/
+exports/
+
+# Local configuration
+.env
+.env.*
+!.env.example
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
