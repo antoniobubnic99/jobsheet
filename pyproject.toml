@@ -95,7 +95,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S", "B011"]
+# RUF012: recorded API payloads are read-only fixtures shared by a test class;
+# annotating each one as ClassVar adds noise without adding safety.
+"tests/*" = ["S", "B011", "RUF012", "E501"]
 
 [tool.mypy]
 python_version = "3.11"
