@@ -1,6 +1,6 @@
 """URL normalisation for de-duplication.
 
-Ported from the predecessor project (`AnteTraziPosao/excel_poslovi.py:64-83`).
+Ported from the private tool this project grew out of.
 
 The one rule worth carrying over verbatim: **the query string is not discarded.**
 An earlier version cut every URL at the `?`, which looked tidy and was wrong --

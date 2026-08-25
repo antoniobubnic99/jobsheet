@@ -47,3 +47,10 @@ exports/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Working notes: handoff documents written for whoever picks the project up
+# next. They are honest about half-finished things and name the private project
+# this one grew out of, which makes them useful to keep and wrong to publish.
+# The parts of them that belong to the project live in docs/ARCHITECTURE.md,
+# docs/SOURCES.md and CONTRIBUTING.md instead.
+/docs/internal/
