@@ -16,6 +16,8 @@ build/
 # Node / frontend
 node_modules/
 web/dist/
+web/.vite/
+*.tsbuildinfo
 src/jobsheet/web/*
 !src/jobsheet/web/.gitkeep
 

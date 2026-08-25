@@ -12,6 +12,7 @@ silent failures rather than loud ones:
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from datetime import date, datetime
 from pathlib import Path
@@ -21,7 +22,7 @@ import openpyxl
 import pytest
 from fastapi.testclient import TestClient
 
-from jobsheet.api.app import create_app
+from jobsheet.api.app import create_app, web_is_built
 from jobsheet.api.runs import SearchRun
 from jobsheet.api.state import TOKEN_HEADER
 from jobsheet.config import Settings
@@ -163,6 +164,33 @@ class TestThePage:
         response = client.get("/../../pyproject.toml")
         assert response.status_code == 200
         assert "[project]" not in response.text
+
+
+@pytest.mark.skipif(not web_is_built(), reason="the interface has not been built")
+class TestTheBuiltInterface:
+    """Only meaningful once `npm run build` has put a bundle in the package."""
+
+    def test_the_real_page_is_served(self, client: TestClient) -> None:
+        body = client.get("/").text
+        assert 'id="root"' in body
+        assert "__JOBSHEET__" in body
+
+    def test_scripts_are_served_as_javascript(self, client: TestClient) -> None:
+        """Windows maps media types through the registry, where `.js` can end up
+        as `text/plain` -- and a browser then refuses to run the module."""
+        page = client.get("/").text
+        script = re.search(r"/assets/[^\"']+\.js", page)
+        assert script, "the built page references no script"
+
+        response = client.get(script.group(0))
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/javascript")
+
+    def test_stylesheets_are_served_as_css(self, client: TestClient) -> None:
+        page = client.get("/").text
+        sheet = re.search(r"/assets/[^\"']+\.css", page)
+        assert sheet, "the built page references no stylesheet"
+        assert client.get(sheet.group(0)).headers["content-type"].startswith("text/css")
 
 
 # ---------------------------------------------------------------- sources

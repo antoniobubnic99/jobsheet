@@ -1,0 +1,263 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+/*
+  Tailwind v4 reads its palette from here, so a utility class and a hand-written
+  rule always mean the same colour. Nothing in the interface hard-codes a hex.
+*/
+@theme inline {
+  --color-ground: var(--ground);
+  --color-ground-sunk: var(--ground-sunk);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --radius-sharp: var(--radius-sharp);
+  --radius-DEFAULT: var(--radius);
+}
+
+@layer base {
+  * {
+    min-width: 0;
+  }
+
+  html {
+    /* The interface never scrolls sideways. Wide content scrolls inside its own
+       box -- see `.scroll-x` -- rather than being clipped here, because clipping
+       at the top only hides the symptom and leaves the content unreachable. */
+    overflow-x: clip;
+  }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Numbers in a table must line up. Non-negotiable in a tool about tables. */
+  table,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-weight: 620;
+    letter-spacing: -0.018em;
+    line-height: 1.15;
+    margin: 0;
+  }
+
+  a {
+    color: inherit;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* One focus treatment everywhere. A keyboard user should never have to guess
+     where they are, and a two-pixel offset ring reads on every surface. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sharp);
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+    color: var(--ink);
+  }
+
+  ::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--rule-strong);
+    border: 3px solid var(--ground);
+    border-radius: var(--radius-round);
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /* ---- the eyebrow ------------------------------------------------------
+     Small, spaced, uppercase: the Swiss label. Used above every section so
+     hierarchy comes from scale contrast rather than from boxes. */
+  .eyebrow {
+    font-size: var(--text-micro);
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .mono {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    letter-spacing: -0.01em;
+  }
+
+  /* ---- panels -----------------------------------------------------------
+     A hairline and a flat surface. No shadow: the grid is the depth cue. */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+  }
+
+  .panel-sunk {
+    background: var(--ground-sunk);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+  }
+
+  /* ---- controls --------------------------------------------------------- */
+  .field {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--rule-strong);
+    border-radius: var(--radius-sharp);
+    padding: 0.4rem 0.6rem;
+    transition: border-color var(--duration-quick) var(--ease);
+  }
+
+  .field::placeholder {
+    color: var(--ink-faint);
+  }
+
+  .field:hover:not(:disabled) {
+    border-color: var(--ink-faint);
+  }
+
+  .field:focus {
+    border-color: var(--accent);
+    outline-offset: 1px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sharp);
+    padding: 0.4rem 0.85rem;
+    font-size: var(--text-small);
+    font-weight: 560;
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+      background-color var(--duration-quick) var(--ease),
+      border-color var(--duration-quick) var(--ease),
+      transform var(--duration-quick) var(--ease);
+  }
+
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .btn:not(:disabled):active {
+    transform: translateY(1px);
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+
+  .btn-primary:not(:disabled):hover {
+    background: var(--accent-hover);
+  }
+
+  .btn-quiet {
+    background: var(--surface);
+    border-color: var(--rule-strong);
+    color: var(--ink);
+  }
+
+  .btn-quiet:not(:disabled):hover {
+    border-color: var(--ink-faint);
+    background: var(--surface-raised);
+  }
+
+  .btn-bare {
+    background: transparent;
+    color: var(--ink-soft);
+    padding: 0.25rem 0.45rem;
+  }
+
+  .btn-bare:not(:disabled):hover {
+    background: var(--ground-sunk);
+    color: var(--ink);
+  }
+
+  /* ---- anything wide ---------------------------------------------------
+     Tables, previews and diagrams scroll inside their own box. The page body
+     never does. */
+  .scroll-x {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    /* `overflow-x: auto` alone is not enough when the child is a `<table>`:
+       Chrome keeps counting the table's width toward the document's scrollable
+       area, and the whole page ends up draggable sideways on a phone even
+       though the table itself scrolls correctly. Paint containment is what
+       actually stops the overflow escaping. Verified at 375px on every screen. */
+    contain: paint;
+  }
+}
+
+@layer utilities {
+  .rule-t {
+    border-top: 1px solid var(--rule);
+  }
+
+  .rule-b {
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .rule-l {
+    border-left: 1px solid var(--rule);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

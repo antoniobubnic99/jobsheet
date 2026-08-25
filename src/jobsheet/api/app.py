@@ -12,6 +12,7 @@ no CORS headers are sent, on purpose.
 
 from __future__ import annotations
 
+import mimetypes
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -41,6 +42,20 @@ from jobsheet.config import Settings
 __all__ = ["WEB_ROOT", "create_app", "web_is_built"]
 
 WEB_ROOT = Path(__file__).resolve().parent.parent / "web"
+
+# Windows resolves media types through the registry, where a stray installer can
+# leave `.js` mapped to `text/plain`. A browser then refuses to run the module
+# and the interface is a blank page -- with nothing in the server log to say so.
+# Stating the types we serve removes a whole class of "it works on my machine".
+for _suffix, _media_type_name in (
+    (".js", "text/javascript"),
+    (".mjs", "text/javascript"),
+    (".css", "text/css"),
+    (".json", "application/json"),
+    (".svg", "image/svg+xml"),
+    (".woff2", "font/woff2"),
+):
+    mimetypes.add_type(_media_type_name, _suffix)
 
 ROUTERS = (
     settings_router.router,

@@ -1,0 +1,172 @@
+/*
+  JobSheet's visual direction: Swiss/International, applied to a data tool.
+
+  Rules rather than shadows. A spreadsheet is a grid of hairlines, and an app
+  whose whole job is to feed one should look like it belongs beside it -- so
+  depth comes from tone and rule weight, not from floating cards.
+
+  One grotesque for text, one mono for anything the machine owns: keys, URLs,
+  counts, source ids. That split is the typographic strategy, and it is doing
+  real work -- a monospaced source id is instantly distinguishable from a
+  human-typed company name at a glance.
+
+  Light is the primary theme. This is a daytime tool used next to Excel, which
+  is white; a dark interface beside a white spreadsheet is a worse experience
+  than an honest light one. Dark mode is complete, not an afterthought.
+*/
+
+:root {
+  color-scheme: light;
+
+  /* ---- ink and ground ---------------------------------------------------- */
+  --ground: oklch(98.6% 0.003 250);
+  --ground-sunk: oklch(96.2% 0.005 250);
+  --surface: oklch(100% 0 0);
+  --surface-raised: oklch(99.3% 0.002 250);
+
+  --ink: oklch(21% 0.02 255);
+  --ink-soft: oklch(45% 0.018 255);
+  --ink-faint: oklch(62% 0.014 255);
+
+  --rule: oklch(90.5% 0.006 255);
+  --rule-strong: oklch(82% 0.01 255);
+
+  /* ---- accent ------------------------------------------------------------
+     One ink-blue, used for the thing you act on and nothing else. */
+  --accent: oklch(48% 0.15 258);
+  --accent-hover: oklch(41% 0.155 258);
+  --accent-soft: oklch(95% 0.03 258);
+  --accent-ink: oklch(100% 0 0);
+
+  /* ---- status ------------------------------------------------------------
+     Semantic, not decorative: each hue means one stage and never anything
+     else, so the board reads as a progression rather than as a palette. */
+  --status-new: oklch(55% 0.02 255);
+  --status-new-soft: oklch(94.5% 0.008 255);
+  --status-applied: oklch(52% 0.13 245);
+  --status-applied-soft: oklch(95% 0.03 245);
+  --status-interview: oklch(58% 0.13 75);
+  --status-interview-soft: oklch(95.5% 0.045 80);
+  --status-offer: oklch(52% 0.13 150);
+  --status-offer-soft: oklch(95% 0.04 150);
+  --status-rejected: oklch(54% 0.15 20);
+  --status-rejected-soft: oklch(95.5% 0.03 20);
+  --status-skipped: oklch(60% 0.012 255);
+  --status-skipped-soft: oklch(95% 0.004 255);
+
+  --ok: oklch(50% 0.13 150);
+  --warn: oklch(58% 0.14 75);
+  --bad: oklch(54% 0.16 20);
+
+  /* ---- type --------------------------------------------------------------
+     System stacks on purpose. The page is served under a CSP with no external
+     origins, so a webfont would be a file to ship and a request to justify;
+     a well-chosen stack costs nothing and renders instantly. */
+  --font-sans: ui-sans-serif, "Inter", "Segoe UI Variable Text", "Segoe UI",
+    system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", "Consolas",
+    "Liberation Mono", monospace;
+
+  --text-micro: 0.6875rem;
+  --text-small: 0.8125rem;
+  --text-body: 0.9375rem;
+  --text-lead: 1.0625rem;
+  --text-title: clamp(1.5rem, 1.2rem + 1.1vw, 2.1rem);
+  --text-display: clamp(2rem, 1.4rem + 2.4vw, 3.25rem);
+
+  /* ---- rhythm ------------------------------------------------------------
+     Deliberately uneven: air above a section, tight inside a table. */
+  --gap-hair: 0.25rem;
+  --gap-tight: 0.5rem;
+  --gap: 0.875rem;
+  --gap-wide: 1.5rem;
+  --gap-section: clamp(2rem, 1.4rem + 2vw, 3.5rem);
+
+  --radius-sharp: 2px;
+  --radius: 5px;
+  --radius-round: 999px;
+
+  --duration-quick: 110ms;
+  --duration: 200ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  --rail-width: 13.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --ground: oklch(19.5% 0.012 258);
+    --ground-sunk: oklch(16.5% 0.012 258);
+    --surface: oklch(23% 0.013 258);
+    --surface-raised: oklch(26% 0.014 258);
+
+    --ink: oklch(95% 0.006 258);
+    --ink-soft: oklch(76% 0.012 258);
+    --ink-faint: oklch(60% 0.014 258);
+
+    --rule: oklch(31% 0.014 258);
+    --rule-strong: oklch(41% 0.016 258);
+
+    --accent: oklch(72% 0.13 255);
+    --accent-hover: oklch(80% 0.12 255);
+    --accent-soft: oklch(30% 0.05 255);
+    --accent-ink: oklch(16% 0.02 258);
+
+    --status-new: oklch(72% 0.014 258);
+    --status-new-soft: oklch(28% 0.01 258);
+    --status-applied: oklch(74% 0.11 245);
+    --status-applied-soft: oklch(28% 0.05 245);
+    --status-interview: oklch(78% 0.11 78);
+    --status-interview-soft: oklch(30% 0.05 78);
+    --status-offer: oklch(74% 0.12 150);
+    --status-offer-soft: oklch(28% 0.05 150);
+    --status-rejected: oklch(72% 0.13 20);
+    --status-rejected-soft: oklch(29% 0.055 20);
+    --status-skipped: oklch(64% 0.01 258);
+    --status-skipped-soft: oklch(26% 0.008 258);
+
+    --ok: oklch(74% 0.12 150);
+    --warn: oklch(78% 0.11 78);
+    --bad: oklch(72% 0.13 20);
+  }
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ground: oklch(19.5% 0.012 258);
+  --ground-sunk: oklch(16.5% 0.012 258);
+  --surface: oklch(23% 0.013 258);
+  --surface-raised: oklch(26% 0.014 258);
+
+  --ink: oklch(95% 0.006 258);
+  --ink-soft: oklch(76% 0.012 258);
+  --ink-faint: oklch(60% 0.014 258);
+
+  --rule: oklch(31% 0.014 258);
+  --rule-strong: oklch(41% 0.016 258);
+
+  --accent: oklch(72% 0.13 255);
+  --accent-hover: oklch(80% 0.12 255);
+  --accent-soft: oklch(30% 0.05 255);
+  --accent-ink: oklch(16% 0.02 258);
+
+  --status-new: oklch(72% 0.014 258);
+  --status-new-soft: oklch(28% 0.01 258);
+  --status-applied: oklch(74% 0.11 245);
+  --status-applied-soft: oklch(28% 0.05 245);
+  --status-interview: oklch(78% 0.11 78);
+  --status-interview-soft: oklch(30% 0.05 78);
+  --status-offer: oklch(74% 0.12 150);
+  --status-offer-soft: oklch(28% 0.05 150);
+  --status-rejected: oklch(72% 0.13 20);
+  --status-rejected-soft: oklch(29% 0.055 20);
+  --status-skipped: oklch(64% 0.01 258);
+  --status-skipped-soft: oklch(26% 0.008 258);
+
+  --ok: oklch(74% 0.12 150);
+  --warn: oklch(78% 0.11 78);
+  --bad: oklch(72% 0.13 20);
+}
