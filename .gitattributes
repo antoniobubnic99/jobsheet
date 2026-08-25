@@ -1,0 +1,20 @@
+# This project is written on Windows and its CI runs on Linux. A CRLF that
+# reaches a shell script or a workflow's `run:` block fails with errors that
+# name a character you cannot see, so the line ending is stated here rather
+# than left to whatever `core.autocrlf` each contributor happens to have.
+* text=auto eol=lf
+
+# Windows-only launchers, which genuinely need CRLF: cmd.exe mis-parses a
+# script with bare LF endings.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binaries, left alone.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff2 binary
+*.xlsx binary
+*.xlsm binary

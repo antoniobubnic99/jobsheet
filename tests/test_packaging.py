@@ -82,6 +82,12 @@ def _build(kind: str, out: Path) -> str:
     except ImportError:  # pragma: no cover - depends on the environment
         _missing("hatchling is not installed, so no distribution can be built")
 
+    if not (PROJECT_ROOT / "pyproject.toml").is_file():
+        # Reached when the tests run against an installed (non-editable)
+        # jobsheet, where the import path says nothing about where the source
+        # is. Better to say so than to have hatchling fail somewhere confusing.
+        _missing(f"no pyproject.toml at {PROJECT_ROOT} -- run the tests from a source checkout")
+
     builder = getattr(hatchling_build, f"build_{kind}")
     cwd = Path.cwd()
     try:

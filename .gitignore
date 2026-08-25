@@ -18,8 +18,11 @@ node_modules/
 web/dist/
 web/.vite/
 *.tsbuildinfo
-src/jobsheet/web/*
-!src/jobsheet/web/.gitkeep
+# The built interface. `npm run build` writes it here with emptyOutDir, so a
+# tracked placeholder inside would be deleted by every build -- the directory
+# is only ever read after a build, and nothing needs it to exist before one.
+# Packaging pulls it in anyway via `artifacts` in pyproject.toml.
+/src/jobsheet/web/
 
 # Scratch space for throwaway scripts
 .scratch/

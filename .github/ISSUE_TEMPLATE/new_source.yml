@@ -1,0 +1,60 @@
+name: Add a job board
+description: Suggest a source JobSheet cannot read yet.
+title: "[new source] "
+labels: ["source", "enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Sources are plugins, and a straightforward one is about thirty lines --
+        see `docs/SOURCES.md`. You are very welcome to open a pull request
+        instead of an issue.
+
+        Two things decide whether a source can be added at all:
+
+        - **No credentials.** Every source that ships with JobSheet works
+          without an account or an API key, and that is a deliberate limit
+          rather than an oversight.
+        - **Reading is allowed.** If the site's terms or robots.txt say no,
+          the answer is no.
+
+  - type: input
+    id: name
+    attributes:
+      label: The board
+      placeholder: Example Jobs
+    validations:
+      required: true
+
+  - type: input
+    id: url
+    attributes:
+      label: Where its listings live
+      placeholder: https://example.com/jobs
+    validations:
+      required: true
+
+  - type: input
+    id: feed
+    attributes:
+      label: An RSS feed or JSON endpoint, if you know of one
+      description: >
+        Many boards have one and do not advertise it. If it is a plain RSS feed,
+        the existing `rss` source may already read it -- worth trying first.
+
+  - type: dropdown
+    id: credentials
+    attributes:
+      label: Does reading the listings need an account or key?
+      options:
+        - "No"
+        - "Yes"
+        - "I do not know"
+    validations:
+      required: true
+
+  - type: input
+    id: country
+    attributes:
+      label: Country, if it is specific to one
+      placeholder: HR

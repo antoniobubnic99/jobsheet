@@ -1,0 +1,83 @@
+name: Something else is broken
+description: The app, the interface, or the spreadsheet does not behave as it should.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If a *job board* stopped returning results, use the other template --
+        those are handled differently.
+
+        **Please do not attach your workbook.** It holds your own notes and
+        application history. A screenshot of the affected cells, or a workbook
+        with one made-up row, is enough.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to see it
+      placeholder: |
+        1. Open the table designer
+        2. Drag "Deadline" above "Title"
+        3. Export
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where it happens
+      options:
+        - The interface in the browser
+        - The exported spreadsheet
+        - The command line
+        - Starting the app at all
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: JobSheet version
+      description: From `jobsheet --version`.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+
+  - type: input
+    id: install
+    attributes:
+      label: How you installed it
+      placeholder: pip install jobsheet / pipx / the Windows ZIP / from source
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Anything the console said
+      description: >
+        Both the terminal running JobSheet and, for interface problems, the
+        browser console (F12).
+      render: text

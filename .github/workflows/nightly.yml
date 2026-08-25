@@ -1,0 +1,73 @@
+name: Nightly live sources
+
+# The contract tests that actually reach the job boards.
+#
+# These are separate from CI for one reason: they can fail because someone
+# else's server changed, and that must never block a pull request. But they
+# have to run somewhere, because a service quietly changing its response is
+# the failure this project is most exposed to -- the recorded fixtures stay
+# green while real users get nothing. That is not hypothetical; it is how
+# Selekcija.gov.hr was found returning zero results to everyone.
+
+on:
+  schedule:
+    # 04:20 UTC. Off the hour, because every cron in the world runs on it.
+    - cron: "20 4 * * *"
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Run one source only (its id, e.g. hzz). Blank runs all."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    name: Live sources
+    runs-on: ubuntu-latest
+    # Generous: these are polite, rate-limited requests to a dozen services.
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+
+      # No frontend build: none of these tests serve a page, and adding Node
+      # here would only be another thing that can fail at 04:20.
+      - name: Live contract tests
+        run: |
+          python -m pytest tests/test_sources_live.py \
+            -m network \
+            -v \
+            --tb=short \
+            ${{ inputs.source && format('-k {0}', inputs.source) || '' }}
+
+      - name: What a failure here means
+        if: failure()
+        run: |
+          {
+            echo "### A live source check failed"
+            echo
+            echo "This is usually one of three things, in order of likelihood:"
+            echo
+            echo "1. **A service changed its response.** Fix the connector, then"
+            echo "   update the recorded payload in \`tests/test_sources_connectors.py\`"
+            echo "   to match -- a fixture that no longer matches reality is how the"
+            echo "   push-time suite stays green while the source is dead."
+            echo "2. **A board closed or a company stopped hiring.** The slugs are"
+            echo "   overridable: set \`JOBSHEET_LIVE_<SOURCE>\` rather than deleting"
+            echo "   the test. A 404 from one board is a bad fixture; a 404 from all"
+            echo "   of them is news."
+            echo "3. **The service is briefly down.** Re-run before changing anything."
+            echo
+            echo "Known broken and expected to xfail: \`narodne_novine\`."
+          } >> "$GITHUB_STEP_SUMMARY"

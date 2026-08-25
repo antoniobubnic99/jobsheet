@@ -1,0 +1,190 @@
+name: CI
+
+# Every push and every pull request. Nothing here touches the network beyond
+# the package registries -- the live checks against real job boards are in
+# nightly.yml, on purpose: a third party's outage must not fail someone's PR.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Turns "the frontend was never built" from a skipped test into a failure.
+  # Without it, tests/test_packaging.py would skip and a release could ship a
+  # package whose interface is a placeholder page.
+  JOBSHEET_ASSERT_PACKAGED_WEB: "1"
+  NODE_VERSION: "22"
+
+jobs:
+  frontend:
+    name: Interface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        working-directory: web
+        run: npm ci
+
+      - name: Type-check
+        working-directory: web
+        run: npm run lint
+
+      - name: Test
+        working-directory: web
+        run: npx vitest run
+
+      - name: Build
+        working-directory: web
+        run: npm run build
+
+      - name: The build must not dirty the tree
+        # `emptyOutDir` wipes the output directory, so anything tracked inside
+        # it disappears on every build. Catching that here is cheaper than
+        # wondering why a release job has uncommitted changes.
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::building the interface changed tracked files:"
+            git status --porcelain
+            exit 1
+          fi
+
+      # Built once and reused by all nine Python jobs, so every one of them
+      # tests the same bundle a release would ship.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: interface
+          path: src/jobsheet/web
+          if-no-files-found: error
+          retention-days: 1
+
+  lint:
+    name: Lint and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+
+      # Lint only. The project deliberately does not use `ruff format` -- the
+      # comments here are written to specific line breaks, and a formatter
+      # would reflow them into something less readable.
+      - name: Ruff
+        run: python -m ruff check .
+
+      - name: Mypy
+        run: python -m mypy
+
+  test:
+    name: Python ${{ matrix.python }} on ${{ matrix.os }}
+    needs: frontend
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing should still tell us about the other two. The
+      # Windows row matters more than usual here: the interface is served by
+      # the same process, and Windows resolves media types through the
+      # registry, which is where the "blank page, empty log" bug came from.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Take the interface built upstream
+        uses: actions/download-artifact@v4
+        with:
+          name: interface
+          path: src/jobsheet/web
+
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+
+      - name: Test
+        run: python -m pytest --cov --cov-report=xml --cov-report=term-missing
+
+      - name: Keep the coverage report
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+          if-no-files-found: error
+
+  package:
+    name: Installs and runs
+    needs: frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Take the interface built upstream
+        uses: actions/download-artifact@v4
+        with:
+          name: interface
+          path: src/jobsheet/web
+
+      - name: Build the distributions
+        run: |
+          python -m pip install build twine
+          python -m build
+          python -m twine check dist/*
+
+      # The end a user actually reaches. `tests/test_packaging.py` proves the
+      # files are inside the wheel; this proves the installed thing serves
+      # them, which is a different claim and the one that matters.
+      - name: Install the wheel somewhere clean and serve it
+        run: |
+          python -m venv /tmp/fresh
+          /tmp/fresh/bin/python -m pip install dist/*.whl
+          mkdir -p /tmp/jshome
+          JOBSHEET_HOME=/tmp/jshome /tmp/fresh/bin/python -m jobsheet.cli serve \
+            --no-browser --port 8791 &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8791/api/health >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8791/api/health || { echo "::error::server never came up"; exit 1; }
+          if curl -s http://127.0.0.1:8791/ | grep -q "has not been built"; then
+            echo "::error::the installed package served the placeholder, not the interface"
+            exit 1
+          fi
+          echo "the installed package serves the interface"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/*
+          if-no-files-found: error

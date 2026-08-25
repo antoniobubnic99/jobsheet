@@ -1,0 +1,131 @@
+name: Release
+
+# Tag-driven. `git tag v0.1.0 && git push --tags` publishes to PyPI and cuts a
+# GitHub Release.
+#
+# The build order is not negotiable and is the reason this file exists rather
+# than a one-line publish action: the interface is built by Node into the
+# Python package, so `npm run build` must finish before `python -m build`
+# starts. Get it backwards and the wheel is missing its interface -- and
+# nothing in the build fails to say so.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and check, but publish nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  JOBSHEET_ASSERT_PACKAGED_WEB: "1"
+
+jobs:
+  build:
+    name: Build the distributions
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # 1. The interface, first.
+      - name: Build the interface
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      # 2. Then the package around it.
+      - name: Build the wheel and sdist
+        run: |
+          python -m pip install build twine
+          python -m build
+          python -m twine check dist/*
+
+      # 3. Then prove the interface is inside what was just built. This is the
+      #    guard the whole file is arranged around; it runs before anything is
+      #    published, and a failure here stops the release.
+      - name: The interface must be in the distributions
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pytest tests/test_packaging.py -v
+
+      - name: Read the version out of the built wheel
+        id: version
+        run: |
+          wheel=$(ls dist/*.whl)
+          version=$(basename "$wheel" | cut -d- -f2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "built jobsheet $version" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: The tag and the version must agree
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          built="${{ steps.version.outputs.version }}"
+          if [ "$tag" != "$built" ]; then
+            echo "::error::tag v$tag does not match the version in pyproject.toml ($built)"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/*
+          if-no-files-found: error
+
+  pypi:
+    name: Publish to PyPI
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/jobsheet
+    permissions:
+      # Trusted publishing: PyPI verifies this workflow's identity directly, so
+      # there is no API token to store, leak or rotate.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github_release:
+    name: Cut the GitHub Release
+    needs: [build, pypi]
+    if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          draft: false

@@ -1,0 +1,65 @@
+name: A source stopped working
+description: A job board returns nothing, or returns rows that look wrong.
+title: "[source] "
+labels: ["source"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the most common kind of bug here, and usually the easiest to
+        fix: a service changed its response and the connector has not caught up.
+
+        Before filing, it is worth running the live check for that one source,
+        because its output is most of the answer:
+
+        ```
+        pytest tests/test_sources_live.py -m network -k <source id>
+        ```
+
+  - type: input
+    id: source
+    attributes:
+      label: Which source
+      description: The id shown in the interface, e.g. hzz, greenhouse, selekcija.
+      placeholder: hzz
+    validations:
+      required: true
+
+  - type: dropdown
+    id: symptom
+    attributes:
+      label: What happens
+      options:
+        - No results at all
+        - Fewer results than the site itself shows
+        - Results arrive but fields are empty or wrong
+        - An error is reported
+    validations:
+      required: true
+
+  - type: textarea
+    id: detail
+    attributes:
+      label: What you expected, and what you got
+      description: >
+        If some rows are wrong rather than missing, one example row and the
+        advert it came from is worth more than a description.
+    validations:
+      required: true
+
+  - type: textarea
+    id: settings
+    attributes:
+      label: The source's settings
+      description: >
+        The values you filled in for that source -- board name, counties,
+        search terms. Leave out anything you would rather not share.
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: JobSheet version
+      description: From `jobsheet --version`.
+    validations:
+      required: true
