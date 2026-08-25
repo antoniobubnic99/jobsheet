@@ -135,3 +135,23 @@ class TestSourceBase:
         """Returning the posting unchanged is always a valid answer."""
         posting = Posting(source_id="rss", title="X", url="https://example.test/1")
         assert await registry.get("rss")().enrich(posting, ctx) is posting
+
+
+def test_every_shipped_source_has_a_live_check() -> None:
+    """A new connector must come with a nightly check against the real service.
+
+    Lives here rather than in `test_sources_live.py` because everything in that
+    module is marked `network` and therefore skipped on push -- which is exactly
+    when someone adds a source and forgets.
+
+    Reads the entry points rather than `load_all()`: half the suite registers
+    test doubles in process, and those neither need nor could have a live check.
+    """
+    from importlib.metadata import entry_points
+
+    from tests.test_sources_live import TARGETS_BY_ID
+
+    shipped = {entry.name for entry in entry_points(group=registry.ENTRY_POINT_GROUP)}
+    assert shipped, "no sources are declared in pyproject.toml"
+    missing = sorted(shipped - set(TARGETS_BY_ID))
+    assert not missing, f"no live check for: {missing}"

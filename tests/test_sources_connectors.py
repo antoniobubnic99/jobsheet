@@ -11,6 +11,7 @@ marked `network`, so they run nightly rather than on every push.
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 import httpx
 import pytest
@@ -522,9 +523,32 @@ class TestSelekcija:
     ]
     DETAIL = [{"ID": "id-1", "OpisPoslova": "<p>Obavlja poslove</p>", "LokacijaRadnogMjesta": ""}]
 
+    @staticmethod
+    def wrapped(rows: list[dict[str, Any]]) -> dict[str, Any]:
+        """The envelope Rhetos serves today."""
+        return {"Records": rows}
+
     @respx.mock
     async def test_joins_the_two_requests(self, ctx: FetchContext) -> None:
-        respx.get(url__startswith=f"{'https://selekcija.gov.hr'}").mock(
+        respx.get(url__startswith="https://selekcija.gov.hr").mock(
+            side_effect=[
+                httpx.Response(200, json=self.wrapped(self.LISTING)),
+                httpx.Response(200, json=self.wrapped(self.DETAIL)),
+            ]
+        )
+        found = await SelekcijaSource().fetch({"days": 45}, ctx)
+        assert found[0].title == "Viši stručni suradnik"
+        assert found[0].description == "Obavlja poslove"
+
+    @respx.mock
+    async def test_a_bare_array_still_parses(self, ctx: FetchContext) -> None:
+        """Rhetos served an unwrapped array until 2026; tolerate it going back.
+
+        This is the shape every fixture here used before the live check of
+        2026-08-25 found the wrapper -- which is the whole reason the recorded
+        tests kept passing while the source returned nothing to real users.
+        """
+        respx.get(url__startswith="https://selekcija.gov.hr").mock(
             side_effect=[
                 httpx.Response(200, json=self.LISTING),
                 httpx.Response(200, json=self.DETAIL),
@@ -533,6 +557,17 @@ class TestSelekcija:
         found = await SelekcijaSource().fetch({"days": 45}, ctx)
         assert found[0].title == "Viši stručni suradnik"
         assert found[0].description == "Obavlja poslove"
+
+    @respx.mock
+    async def test_an_unknown_envelope_is_an_error_not_an_empty_result(
+        self, ctx: FetchContext
+    ) -> None:
+        """Silence is the dangerous failure: nothing raises, nothing is found."""
+        respx.get(url__startswith="https://selekcija.gov.hr").mock(
+            return_value=httpx.Response(200, json={"Something": "else"})
+        )
+        with pytest.raises(SourceError):
+            await SelekcijaSource().fetch({"days": 45}, ctx)
 
     @respx.mock
     async def test_the_authority_seat_is_never_used_as_the_region(
@@ -544,8 +579,8 @@ class TestSelekcija:
         """
         respx.get(url__startswith="https://selekcija.gov.hr").mock(
             side_effect=[
-                httpx.Response(200, json=self.LISTING),
-                httpx.Response(200, json=self.DETAIL),
+                httpx.Response(200, json=self.wrapped(self.LISTING)),
+                httpx.Response(200, json=self.wrapped(self.DETAIL)),
             ]
         )
         found = await SelekcijaSource().fetch({"days": 45}, ctx)
@@ -557,7 +592,10 @@ class TestSelekcija:
     async def test_descriptions_are_optional(self, ctx: FetchContext) -> None:
         """Losing the description must not lose the competition."""
         respx.get(url__startswith="https://selekcija.gov.hr").mock(
-            side_effect=[httpx.Response(200, json=self.LISTING), httpx.Response(500)]
+            side_effect=[
+                httpx.Response(200, json=self.wrapped(self.LISTING)),
+                httpx.Response(500),
+            ]
         )
         found = await SelekcijaSource().fetch({"days": 45}, ctx)
         assert len(found) == 1

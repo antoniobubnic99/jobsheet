@@ -91,6 +91,10 @@ artifacts = ["/src/jobsheet/web/**"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# Live tests are opt-in. A default `pytest` must never reach out to someone
+# else's server: it makes the suite slow, flaky and impolite, and it turns a
+# third party's outage into a broken build. `pytest -m network` runs them.
+addopts = "-m 'not network'"
 markers = [
     "network: hits a live third-party endpoint; run nightly, not on every push",
 ]

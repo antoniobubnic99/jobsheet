@@ -12,6 +12,10 @@ Two things here are easy to get wrong and both were paid for:
   Split, Osijek or on an island. Only `MjestoRada` says where the job is.
 * **Dates are .NET `/Date(ms+hhmm)/`.** Dropping the offset moves every
   publication date back by a day.
+* **The envelope is not stable.** Rhetos answered with a bare JSON array until
+  some point before 2026-08-25, and with `{"Records": [...]}` after. Both are
+  accepted here, because a wrapper appearing again is far cheaper to tolerate
+  than to notice: the source simply returns nothing and no request fails.
 
 There is no per-advert URL, so the link points at the list page with the
 competition code, which is what a person would use to find it by hand.
@@ -55,6 +59,19 @@ def _endpoint(entity: str, since: str) -> str:
     return f"{REST}/{entity}/?{query}"
 
 
+def _records(payload: Any) -> list[dict[str, Any]] | None:
+    """The rows out of whichever envelope Rhetos used this time.
+
+    Returns None when the payload is neither shape, so the caller can tell
+    "no results" apart from "we no longer understand the answer".
+    """
+    if isinstance(payload, dict):
+        payload = payload.get("Records")
+    if not isinstance(payload, list):
+        return None
+    return [row for row in payload if isinstance(row, dict)]
+
+
 class SelekcijaSource(Source):
     manifest = SourceManifest(
         id="selekcija",
@@ -82,17 +99,17 @@ class SelekcijaSource(Source):
         since = (ctx.today - timedelta(days=days)).isoformat()
 
         ctx.report("Reading Selekcija.gov.hr")
-        listing = await ctx.http.get_json(_endpoint("ObjavljeniNatjecajiList", since))
-        if not isinstance(listing, list):
+        listing = _records(await ctx.http.get_json(_endpoint("ObjavljeniNatjecajiList", since)))
+        if listing is None:
             raise SourceError("Selekcija returned no competition list")
 
         # A second request carries the job description. Joined on ID rather than
         # fetched per advert, so this stays two requests however many results.
         details: dict[str, dict[str, Any]] = {}
         try:
-            detail_rows = await ctx.http.get_json(_endpoint("NatjecajDetail", since))
-            if isinstance(detail_rows, list):
-                details = {row.get("ID", ""): row for row in detail_rows if isinstance(row, dict)}
+            detail_rows = _records(await ctx.http.get_json(_endpoint("NatjecajDetail", since)))
+            if detail_rows is not None:
+                details = {row.get("ID", ""): row for row in detail_rows}
         except Exception as error:
             ctx.report(f"  ! Selekcija details unavailable ({type(error).__name__})")
 
