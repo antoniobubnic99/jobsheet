@@ -1,0 +1,86 @@
+{
+  "keyword_groups": [
+    {
+      "name": "Data analyst",
+      "terms": [
+        "data analyst",
+        "business analyst",
+        "analytics",
+        "reporting",
+        "power bi",
+        "tableau"
+      ]
+    },
+    {
+      "name": "Data engineering",
+      "terms": [
+        "data engineer",
+        "etl",
+        "data warehouse",
+        "dbt",
+        "airflow"
+      ]
+    },
+    {
+      "name": "SQL / Python",
+      "terms": [
+        "sql",
+        "postgres",
+        "python",
+        "pandas"
+      ]
+    }
+  ],
+  "locations": [
+    "zagreb",
+    "remote"
+  ],
+  "regions": [
+    "zagreb"
+  ],
+  "remote_terms": [
+    "remote",
+    "work from home",
+    "hybrid",
+    "telecommute",
+    "rad od kuce"
+  ],
+  "max_age_days": 30,
+  "excluded_employers": [
+    "Example Staffing Agency"
+  ],
+  "excluded_employment_types": [
+    "internship",
+    "volunteer"
+  ],
+  "employment_type_allowlist": [
+    "permanent",
+    "na neodredeno"
+  ],
+  "excluded_schedules": [
+    "night shift"
+  ],
+  "description_match_requires": [
+    "bachelor",
+    "bsc",
+    "degree"
+  ],
+  "flags": {
+    "junior-friendly": [
+      "junior",
+      "entry level",
+      "graduate",
+      "no experience"
+    ],
+    "asks for a driving licence": [
+      "driving licence",
+      "driver's license",
+      "vozacka"
+    ],
+    "mentions salary": [
+      "salary",
+      "eur/month",
+      "gross"
+    ]
+  }
+}

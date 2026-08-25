@@ -1,0 +1,117 @@
+{
+  "sheet_name": "Jobs",
+  "theme": "navy",
+  "freeze_header": true,
+  "autofilter": true,
+  "zebra": true,
+  "sort_by": [
+    "posted_at",
+    "company"
+  ],
+  "sort_descending": true,
+  "columns": [
+    {
+      "key": "found_at",
+      "label": "Found",
+      "kind": "date",
+      "width": 13
+    },
+    {
+      "key": "company",
+      "label": "Company",
+      "kind": "text",
+      "width": 26
+    },
+    {
+      "key": "title",
+      "label": "Position",
+      "kind": "text",
+      "width": 36
+    },
+    {
+      "key": "url",
+      "label": "Link",
+      "kind": "url",
+      "width": 44
+    },
+    {
+      "key": "location",
+      "label": "Location",
+      "kind": "text",
+      "width": 20
+    },
+    {
+      "key": "deadline",
+      "label": "Closes",
+      "kind": "date",
+      "width": 13
+    },
+    {
+      "key": "category",
+      "label": "Category",
+      "kind": "text",
+      "width": 18
+    },
+    {
+      "key": "note",
+      "label": "Why this one",
+      "kind": "note",
+      "width": 46,
+      "wrap": true
+    },
+    {
+      "key": "status",
+      "label": "Status",
+      "kind": "status",
+      "width": 14
+    },
+    {
+      "key": "applied_on",
+      "label": "Applied on",
+      "kind": "date",
+      "width": 14
+    },
+    {
+      "key": "contact",
+      "label": "Contact",
+      "kind": "text",
+      "width": 24
+    },
+    {
+      "key": "my_notes",
+      "label": "My notes",
+      "kind": "note",
+      "width": 40,
+      "wrap": true
+    }
+  ],
+  "rules": [
+    {
+      "when_column": "status",
+      "equals": "rejected",
+      "fill": "D9D9D9",
+      "stop_if_true": true
+    },
+    {
+      "when_column": "status",
+      "equals": "skipped",
+      "fill": "D9D9D9",
+      "stop_if_true": true
+    },
+    {
+      "when_column": "status",
+      "equals": "offer",
+      "fill": "FFE699"
+    },
+    {
+      "when_column": "status",
+      "equals": "interview",
+      "fill": "BDD7EE"
+    },
+    {
+      "when_column": "status",
+      "equals": "applied",
+      "fill": "C6EFCE"
+    }
+  ]
+}
