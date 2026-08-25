@@ -41,6 +41,10 @@ dev = [
     "hypothesis>=6.100",
     "ruff>=0.5",
     "mypy>=1.10",
+    # Not for building releases -- for `tests/test_packaging.py`, which builds a
+    # throwaway wheel and sdist to prove the interface is inside them.
+    "hatchling>=1.24",
+    "build>=1.2",
 ]
 
 [project.urls]
@@ -68,8 +72,21 @@ posao_hr = "jobsheet.sources.hr.posao_hr:PosaoHrSource"
 narodne_novine = "jobsheet.sources.hr.narodne_novine:NarodneNovineSource"
 selekcija = "jobsheet.sources.hr.selekcija:SelekcijaSource"
 
+# The interface is a build artifact, so `.gitignore` hides it -- and hatchling
+# honours `.gitignore`. Without these two `artifacts` lines the build still
+# succeeds and still produces a package, just one whose server greets the user
+# with "the interface has not been built". `tests/test_packaging.py` builds a
+# real wheel and a real sdist and looks inside; keep it, or this comment is the
+# only thing standing between a release and a blank page.
+#
+# Build order is always `npm run build` first, then `python -m build`.
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/jobsheet"]
+artifacts = ["/src/jobsheet/web/**"]
+
+[tool.hatch.build.targets.sdist]
+artifacts = ["/src/jobsheet/web/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
