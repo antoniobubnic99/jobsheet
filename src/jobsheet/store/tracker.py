@@ -60,6 +60,17 @@ class Tracker:
         record = cursor.fetchone()
         return ApplicationStatus(record[0]) if record else ApplicationStatus.NEW
 
+    def knows(self, dedup_key: str) -> bool:
+        """Whether this job is tracked at all.
+
+        `status_of` cannot answer this: it reports `NEW` both for a job that is
+        genuinely new and for one the database has never heard of.
+        """
+        cursor = self.db._connection.execute(
+            "SELECT 1 FROM applications WHERE dedup_key = ?", (dedup_key,)
+        )
+        return cursor.fetchone() is not None
+
     def set_status(
         self, dedup_key: str, status: ApplicationStatus, *, note: str = ""
     ) -> StatusChange | None:
@@ -67,7 +78,16 @@ class Tracker:
 
         Setting a status to what it already is is not an event: a user dragging a
         card back where it started should not litter their history.
+
+        An untracked job is also `None` rather than an error. History hangs off
+        the ad, so recording a move for an ad that was never stored would leave
+        an event pointing at nothing -- and the foreign key would refuse it
+        anyway. Callers that want the job adopted should store it first; see
+        `merge_from_sheet`.
         """
+        if not self.knows(dedup_key):
+            return None
+
         previous = self.status_of(dedup_key)
         if previous is status:
             return None
@@ -140,9 +160,17 @@ def merge_from_sheet(tracker: Tracker, rows: list[JobRow]) -> list[StatusChange]
 
     Only user-owned data moves in this direction. Titles, companies and dates
     belong to the source and are refreshed from it, not from the sheet.
+
+    A row the database has never seen is adopted rather than dropped. That
+    happens for real: someone pastes a job in by hand, or restores an old
+    workbook next to a fresh database. It is stored as `NEW` first so that the
+    status the sheet carries is recorded as a proper move, with a date, instead
+    of appearing as though it had always been that way.
     """
     changes: list[StatusChange] = []
     for row in rows:
+        if not tracker.knows(row.dedup_key):
+            tracker.db.save_row(row.model_copy(update={"status": ApplicationStatus.NEW}))
         if change := tracker.set_status(row.dedup_key, row.status, note="edited in the workbook"):
             changes.append(change)
         if row.user_values:

@@ -61,6 +61,11 @@ class RunReport:
     rejected: list[tuple[Posting, Rejection]] = field(default_factory=list)
     errors: dict[str, str] = field(default_factory=dict)
 
+    # How many ads each source handed over, before any filtering. Kept per
+    # source because "you got fewer results today" is nearly always one source
+    # having gone quiet, and a total cannot tell the user which one.
+    harvested: dict[str, int] = field(default_factory=dict)
+
     @property
     def new_count(self) -> int:
         return len(self.rows)
@@ -96,11 +101,13 @@ async def _fetch_one(
         report.errors[request.source_id] = str(error)
         return []
     try:
-        return await source.fetch(request.params, ctx)
+        postings = await source.fetch(request.params, ctx)
     except Exception as error:
         report.errors[request.source_id] = f"{type(error).__name__}: {error}"
         ctx.report(f"  ! {request.source_id} failed: {type(error).__name__}")
         return []
+    report.harvested[request.source_id] = len(postings)
+    return postings
 
 
 async def run_search(

@@ -325,6 +325,91 @@ class Database:
         )
         return [_row_from_record(record) for record in cursor.fetchall()]
 
+    # The interface asks for a page of rows at a time, filtered by whatever the
+    # user typed. Doing that in SQL rather than in Python keeps a search over a
+    # few thousand ads instant and, more usefully, keeps the paging honest --
+    # `total` counts what matches, not what happened to be loaded.
+    def _filter(
+        self, status: str | None, query: str, source: str | None
+    ) -> tuple[str, list[Any]]:
+        clauses: list[str] = []
+        values: list[Any] = []
+        if status:
+            clauses.append("a.status = ?")
+            values.append(status)
+        if source:
+            clauses.append("p.source_id LIKE ?")
+            values.append(f"{source}%")
+        if query:
+            # LIKE is case-insensitive for ASCII in SQLite but not beyond it, so
+            # both sides are folded first. Diacritics are left alone here; the
+            # matching module owns that, and doing it twice differently would be
+            # worse than not doing it.
+            like = f"%{query.casefold()}%"
+            clauses.append(
+                "(LOWER(p.title) LIKE ? OR LOWER(p.company) LIKE ?"
+                " OR LOWER(p.location) LIKE ? OR LOWER(a.note) LIKE ?"
+                " OR LOWER(p.tags) LIKE ?)"
+            )
+            values.extend([like] * 5)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        return where, values
+
+    def rows(
+        self,
+        *,
+        status: str | None = None,
+        query: str = "",
+        source: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[JobRow]:
+        """A page of tracked jobs, newest first."""
+        where, values = self._filter(status, query, source)
+        # The interpolation below is safe, and safe for a reason worth stating:
+        # `_filter` builds `where` out of string literals only. Every value the
+        # user supplied travels separately in `values`, as a bound parameter.
+        sql = (
+            "SELECT p.*, a.status, a.category, a.note, a.user_values, a.link_text,"  # noqa: S608
+            " a.found_at FROM postings p JOIN applications a ON a.dedup_key = p.dedup_key"
+            f"{where} ORDER BY a.found_at DESC, p.company"
+        )
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            values.extend([limit, offset])
+        cursor = self._connection.execute(sql, values)
+        return [_row_from_record(record) for record in cursor.fetchall()]
+
+    def count_rows(
+        self, *, status: str | None = None, query: str = "", source: str | None = None
+    ) -> int:
+        where, values = self._filter(status, query, source)
+        cursor = self._connection.execute(
+            "SELECT COUNT(*) FROM postings p JOIN applications a"  # noqa: S608
+            f" ON a.dedup_key = p.dedup_key{where}",
+            values,
+        )
+        return int(cursor.fetchone()[0])
+
+    def row(self, dedup_key: str) -> JobRow | None:
+        """One tracked job, or `None` if it is not tracked."""
+        cursor = self._connection.execute(
+            "SELECT p.*, a.status, a.category, a.note, a.user_values, a.link_text,"
+            " a.found_at FROM postings p JOIN applications a ON a.dedup_key = p.dedup_key"
+            " WHERE p.dedup_key = ?",
+            (dedup_key,),
+        )
+        record = cursor.fetchone()
+        return _row_from_record(record) if record else None
+
+    def delete_row(self, dedup_key: str) -> bool:
+        """Forget a job entirely, history included. Only the user asks for this."""
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                "DELETE FROM postings WHERE dedup_key = ?", (dedup_key,)
+            )
+        return cursor.rowcount > 0
+
     def known_keys(self) -> set[str]:
         cursor = self._connection.execute("SELECT dedup_key FROM postings")
         return {record[0] for record in cursor.fetchall()}
