@@ -67,6 +67,39 @@ a build matching $hostVersion.
 "@
 }
 
+# `build` and `hatchling` come from the dev extra, so a shell that has Python on
+# PATH but not the project's environment activated gets here and then fails four
+# steps later with "No module named build.__main__" -- which names the wrong
+# problem. Ask now, while the answer is still one command.
+#
+# Asked through stdout rather than an exit code: a native command writing to
+# stderr under $ErrorActionPreference = 'Stop' is its own Windows PowerShell
+# trap, and this check must not become the thing that breaks the build.
+#
+# `origin` is what makes the test honest. This repository writes its output to
+# a folder called `build`, and a folder without `__init__.py` on sys.path is a
+# perfectly good namespace package -- so `find_spec('build')` is truthy even on
+# an interpreter that has never heard of the build tool. Only a real package
+# has an origin; a namespace portion has None. Getting this wrong is how
+# `python -m build` comes to say "'build' is a package and cannot be directly
+# executed", which is true, unhelpful, and about the wrong package entirely.
+$hasBuild = & python -c "import importlib.util as u; s = u.find_spec('build'); print('yes' if s and s.origin else 'no')"
+if ($hasBuild -ne 'yes') {
+    throw @"
+Python on PATH cannot import the "build" package, so the wheel cannot be built.
+(A "build" folder in this repository is not it -- that is where output goes.)
+
+This almost always means the project environment is not activated. From the
+repository root:
+
+    .venv\Scripts\Activate.ps1
+
+or install the dev extra into whichever interpreter is on PATH:
+
+    python -m pip install -e ".[dev]"
+"@
+}
+
 # ---------------------------------------------------------------- 1. clean
 Step 'Clearing the previous build'
 if (Test-Path $Staging) { Remove-Item $Staging -Recurse -Force }
