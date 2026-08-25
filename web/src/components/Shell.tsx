@@ -1,10 +1,10 @@
 /**
  * The frame: a left rail, a content column, nothing else.
  *
- * Five screens is few enough that they can all be visible all the time, which
- * is better than a menu -- the user can see the whole app at once and never has
- * to remember where anything lives. The rail carries a number, a name and a
- * one-line hint, so the app explains itself without a tour.
+ * Few enough screens that they can all be visible at once, which is better than
+ * a menu -- the user can see the whole app and never has to remember where
+ * anything lives. The rail carries a number, a name and a one-line hint, so the
+ * app explains itself without a tour.
  */
 
 import { NavLink, Outlet } from 'react-router-dom';
@@ -13,13 +13,31 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/lib/useTheme';
 import { LANGUAGES, setLanguage, type LanguageCode } from '@/i18n';
 
-const SCREENS = [
-  { to: '/', key: 'search', number: '01', end: true },
-  { to: '/results', key: 'results', number: '02', end: false },
-  { to: '/designer', key: 'designer', number: '03', end: false },
-  { to: '/tracker', key: 'tracker', number: '04', end: false },
-  { to: '/settings', key: 'settings', number: '05', end: false },
+/**
+ * Screens kept out of the rail.
+ *
+ * Hidden, not removed: the route still resolves, so `/designer` works if you
+ * type it or follow a link, and nothing that depends on a layout stops working.
+ * The sheet designer is a thing you use once, when you decide what the workbook
+ * should look like; after that it is a door you walk past every day and never
+ * open. The workbook carries its own layout, so the design survives without it.
+ *
+ * Take a key out of this list to put the screen back in the rail. Numbering
+ * below is computed, so the rail stays 01, 02, 03… with no gap where this was.
+ */
+const HIDDEN_FROM_RAIL: readonly string[] = ['designer'];
+
+const ALL_SCREENS = [
+  { to: '/', key: 'search', end: true },
+  { to: '/results', key: 'results', end: false },
+  { to: '/designer', key: 'designer', end: false },
+  { to: '/tracker', key: 'tracker', end: false },
+  { to: '/settings', key: 'settings', end: false },
 ] as const;
+
+const SCREENS = ALL_SCREENS.filter((screen) => !HIDDEN_FROM_RAIL.includes(screen.key)).map(
+  (screen, index) => ({ ...screen, number: String(index + 1).padStart(2, '0') }),
+);
 
 export default function Shell() {
   const { t, i18n } = useTranslation();

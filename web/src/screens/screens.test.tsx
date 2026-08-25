@@ -242,10 +242,27 @@ describe('every screen mounts', () => {
     expect(await screen.findByText(/jobs\.xlsx/)).toBeInTheDocument();
   });
 
-  it('the shell links to all five screens', () => {
+  it('the shell links to every screen in the rail', () => {
     render(wrap(<Shell />));
-    for (const name of ['Search', 'Results', 'Sheet designer', 'Tracker', 'Settings']) {
+    for (const name of ['Search', 'Results', 'Tracker', 'Settings']) {
       expect(screen.getByRole('link', { name: new RegExp(name, 'i') })).toBeInTheDocument();
     }
+  });
+
+  it('the sheet designer is hidden from the rail but still routed', () => {
+    render(wrap(<Shell />));
+    // Hidden, not removed. If this ever starts failing because the link is
+    // back, that is a decision someone made in HIDDEN_FROM_RAIL, not a bug.
+    expect(screen.queryByRole('link', { name: /sheet designer/i })).not.toBeInTheDocument();
+  });
+
+  it('the rail numbers itself without a gap where a hidden screen was', () => {
+    render(wrap(<Shell />));
+    // The whole point of computing the numbers: hiding 03 must not leave the
+    // rail reading 01, 02, 04, 05.
+    for (const number of ['01', '02', '03', '04']) {
+      expect(screen.getByText(number)).toBeInTheDocument();
+    }
+    expect(screen.queryByText('05')).not.toBeInTheDocument();
   });
 });
