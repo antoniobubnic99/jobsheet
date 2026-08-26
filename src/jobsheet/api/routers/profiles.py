@@ -1,9 +1,9 @@
-"""Saved searches and saved sheet designs.
+"""Saved searches, saved sheet designs, and the setup the wizard wrote.
 
-Both are named JSON, so they share one endpoint rather than two nearly identical
-ones. `kind` is `search` or `layout`; anything else is refused, because a typo
-that silently created a third namespace would be invisible until a profile went
-missing.
+All of them are named JSON, so they share one endpoint rather than three nearly
+identical ones. `kind` is `search`, `layout` or `setup`; anything else is
+refused, because a typo that silently created a fourth namespace would be
+invisible until a profile went missing.
 
 Saving is validated against the real model. A profile that cannot be loaded back
 is not worth storing, and finding that out at save time is far kinder than
@@ -19,11 +19,19 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from jobsheet.api.state import CurrentState
 from jobsheet.core.matching import SearchProfile
+from jobsheet.core.setup import SearchSetup
 from jobsheet.sheet.layout import SheetLayout
 
 router = APIRouter(prefix="/api/profiles", tags=["profiles"])
 
-KINDS: dict[str, type[BaseModel]] = {"search": SearchProfile, "layout": SheetLayout}
+KINDS: dict[str, type[BaseModel]] = {
+    "search": SearchProfile,
+    "layout": SheetLayout,
+    # What the wizard collected. One per account, under a fixed name, but it
+    # travels the same road as everything else here rather than getting a
+    # private endpoint that would then need its own validation.
+    "setup": SearchSetup,
+}
 
 MAX_NAME = 80
 

@@ -4,7 +4,10 @@ Two things are worth testing hardest here, and they are the two that would be
 silent failures rather than loud ones:
 
 * **the token and the host check**, because a page in another tab can reach
-  `127.0.0.1` and must get nowhere, and
+  `127.0.0.1` and must get nowhere,
+* **the account boundary**, because one install now holds several job searches
+  and the failure mode of getting that wrong is silent: not an error, but one
+  person reading another's spreadsheet, and
 * **the export order**, because writing the workbook before reading it is
   exactly how a year of hand-typed statuses gets erased.
 """
@@ -83,11 +86,33 @@ def settings(tmp_path: Path) -> Settings:
     return Settings(home=tmp_path / "home", open_browser=False)
 
 
+USERNAME = "tester"
+PASSWORD = "a-good-password"
+
+
+def sign_up(client: TestClient, username: str = USERNAME, password: str = PASSWORD) -> Any:
+    """Register and stay signed in. The cookie rides on the client from here."""
+    response = client.post(
+        "/api/auth/register", json={"username": username, "password": password}
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+@pytest.fixture
+def anonymous(settings: Settings) -> Iterator[TestClient]:
+    """The page token and nothing else: served the interface, not signed in."""
+    with TestClient(create_app(settings), base_url=BASE_URL) as test_client:
+        test_client.headers[TOKEN_HEADER] = settings.token
+        yield test_client
+
+
 @pytest.fixture
 def client(settings: Settings) -> Iterator[TestClient]:
     app = create_app(settings)
     with TestClient(app, base_url=BASE_URL) as test_client:
         test_client.headers[TOKEN_HEADER] = settings.token
+        sign_up(test_client)
         yield test_client
 
 
@@ -128,8 +153,17 @@ class TestAccess:
 
     def test_localhost_by_name_is_fine(self, settings: Settings) -> None:
         with TestClient(create_app(settings), base_url="http://localhost:8765") as local:
-            response = local.get("/api/settings", headers={TOKEN_HEADER: settings.token})
+            response = local.get("/api/auth/status", headers={TOKEN_HEADER: settings.token})
             assert response.status_code == 200
+
+    def test_the_token_alone_does_not_get_past_the_sign_in(
+        self, anonymous: TestClient
+    ) -> None:
+        """The two checks answer different questions and neither stands in for the other."""
+        assert anonymous.get("/api/settings").status_code == 401
+        assert anonymous.get("/api/auth/me").status_code == 401
+        # ...while the door itself is reachable, or nobody could ever sign in.
+        assert anonymous.get("/api/auth/status").status_code == 200
 
     def test_the_stream_accepts_the_token_in_the_query(self, client: TestClient) -> None:
         """EventSource cannot set headers, so the stream has to allow this."""
@@ -296,7 +330,13 @@ class TestSearch:
         self, client: TestClient, state: Any
     ) -> None:
         """An empty list would read as "nothing found", which is a different claim."""
-        run = SearchRun(id="pending", started_at=datetime.now(), requests=[])
+        run = SearchRun(
+            id="pending",
+            started_at=datetime.now(),
+            requests=[],
+            user_id=state.db.user_id,
+            db=state.db,
+        )
         state.runs._runs[run.id] = run
 
         assert client.get("/api/search/pending/results").status_code == 409

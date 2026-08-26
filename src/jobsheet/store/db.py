@@ -5,8 +5,13 @@ split is deliberate. A workbook is easy to reason about and easy to edit, but it
 cannot hold a history, and a user who deletes a row should not thereby lose the
 record that they applied for that job in June.
 
-Everything lives in one file the user owns, next to their workbook. There is no
-server, no account and nothing to sign up for.
+Everything lives in one file, next to the workbook. Since accounts arrived that
+one file can hold several job searches at once, and the split between them is
+deliberate: an ad is an ad whoever found it, so `postings` is shared, while
+everything a person knows or decides about an ad -- status, notes, saved
+searches, run history -- is theirs alone. Every query below that touches those
+tables states whose rows it means, because the failure mode of forgetting is not
+an error, it is one person quietly reading another's job search.
 
 Migrations are a plain list, applied in order, tracked by SQLite's own
 `user_version`. That is enough for a single-file local database and avoids a
@@ -26,7 +31,12 @@ from typing import Any
 from jobsheet.core.models import ApplicationStatus, Posting, Workplace
 from jobsheet.sheet.row import JobRow
 
-__all__ = ["MIGRATIONS", "Database"]
+__all__ = ["MIGRATIONS", "SOLO_USERNAME", "Database"]
+
+# The account that owns everything on an install nobody has signed into: the
+# rows the command line writes, and whatever predates accounts entirely. It
+# carries no password, so it cannot be logged into -- only claimed.
+SOLO_USERNAME = "local"
 
 MIGRATIONS: list[str] = [
     # 1 -- the ads themselves, keyed by the same normalised URL used everywhere
@@ -110,6 +120,86 @@ MIGRATIONS: list[str] = [
         message    TEXT NOT NULL DEFAULT ''
     );
     """,
+    # 2 -- accounts. One install can now hold several job searches that never
+    # see each other. The split is deliberate: an ad is an ad whoever found it,
+    # so `postings` stays shared, while everything a person knows or decides
+    # about an ad belongs to them and gains a `user_id`.
+    """
+    CREATE TABLE users (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        username        TEXT NOT NULL,
+        -- Case-folded, and the unique one: nobody should be able to register
+        -- "Ana" against an existing "ana" and then wonder whose data they see.
+        username_folded TEXT NOT NULL UNIQUE,
+        password_hash   TEXT NOT NULL,
+        workbook        TEXT,
+        created_at      TEXT NOT NULL,
+        last_seen_at    TEXT,
+        onboarded_at    TEXT
+    );
+
+    CREATE TABLE sessions (
+        -- The hash, never the token. A stolen database should not hand over
+        -- live sessions as well as everything else.
+        token_hash TEXT PRIMARY KEY,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+    );
+    CREATE INDEX idx_sessions_user ON sessions(user_id);
+
+    -- Anything already here belongs to whoever has been using this install.
+    -- It is handed to a placeholder account with no password, which the
+    -- interface offers to claim on first launch, so upgrading never looks
+    -- like data loss. A fresh database gets no such account.
+    INSERT INTO users (id, username, username_folded, password_hash, created_at)
+    SELECT 1, 'local', 'local', '', strftime('%Y-%m-%dT%H:%M:%S', 'now')
+    WHERE EXISTS (SELECT 1 FROM applications)
+       OR EXISTS (SELECT 1 FROM profiles)
+       OR EXISTS (SELECT 1 FROM runs);
+
+    -- `applications` and `profiles` change primary key, which SQLite can only
+    -- do by rebuilding the table. The other two merely gain a column.
+    CREATE TABLE applications_v2 (
+        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        dedup_key   TEXT NOT NULL REFERENCES postings(dedup_key) ON DELETE CASCADE,
+        status      TEXT NOT NULL DEFAULT 'new',
+        category    TEXT NOT NULL DEFAULT '',
+        note        TEXT NOT NULL DEFAULT '',
+        user_values TEXT NOT NULL DEFAULT '{}',
+        link_text   TEXT NOT NULL DEFAULT '',
+        found_at    TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        PRIMARY KEY (user_id, dedup_key)
+    );
+    INSERT INTO applications_v2 (user_id, dedup_key, status, category, note,
+                                 user_values, link_text, found_at, updated_at)
+    SELECT 1, dedup_key, status, category, note, user_values, link_text,
+           found_at, updated_at
+    FROM applications;
+    DROP TABLE applications;
+    ALTER TABLE applications_v2 RENAME TO applications;
+    CREATE INDEX idx_applications_status ON applications(user_id, status);
+
+    CREATE TABLE profiles_v2 (
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name       TEXT NOT NULL,
+        kind       TEXT NOT NULL,
+        payload    TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, name, kind)
+    );
+    INSERT INTO profiles_v2 (user_id, name, kind, payload, updated_at)
+    SELECT 1, name, kind, payload, updated_at FROM profiles;
+    DROP TABLE profiles;
+    ALTER TABLE profiles_v2 RENAME TO profiles;
+
+    ALTER TABLE application_events ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1;
+    CREATE INDEX idx_events_user ON application_events(user_id, dedup_key, at);
+
+    ALTER TABLE runs ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1;
+    CREATE INDEX idx_runs_user ON runs(user_id, id);
+    """,
 ]
 
 
@@ -129,7 +219,7 @@ def _as_date(value: Any) -> date | None:
 class Database:
     """A single local SQLite file."""
 
-    def __init__(self, path: Path | str) -> None:
+    def __init__(self, path: Path | str, *, user_id: int | None = None) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._connection = sqlite3.connect(self.path, check_same_thread=False)
@@ -138,10 +228,64 @@ class Database:
         # The interface reads while a search writes; WAL is what makes that
         # comfortable without a lock dance.
         self._connection.execute("PRAGMA journal_mode = WAL")
+        self._user_id = user_id
+        self._owns_connection = True
         self.migrate()
 
     def close(self) -> None:
-        self._connection.close()
+        if self._owns_connection:
+            self._connection.close()
+
+    # ------------------------------------------------------------------ scope
+
+    @property
+    def user_id(self) -> int:
+        """Whose rows this handle reads and writes.
+
+        The interface always says so outright, because it serves several people.
+        The command line and the tests usually do not, and for them the answer is
+        worked out once, lazily: the only account on the install, or a
+        placeholder created on the spot. That placeholder has no password, which
+        the interface reads as "there is data here, claim it" rather than as an
+        account somebody could sign into.
+        """
+        if self._user_id is None:
+            self._user_id = self._solo_user()
+        return self._user_id
+
+    def as_user(self, user_id: int) -> Database:
+        """A second handle on the same open file, reading another account's rows.
+
+        The connection is shared rather than reopened. SQLite would give us a
+        second one happily, but then two handles serving one request could sit on
+        opposite sides of a transaction and disagree about what exists.
+        """
+        view = object.__new__(Database)
+        view.path = self.path
+        view._connection = self._connection
+        view._user_id = user_id
+        view._owns_connection = False
+        return view
+
+    def _solo_user(self) -> int:
+        rows = self._connection.execute("SELECT id FROM users ORDER BY id LIMIT 2").fetchall()
+        if len(rows) == 1:
+            return int(rows[0][0])
+        if len(rows) > 1:
+            raise LookupError(
+                "This JobSheet has more than one account, so a database handle cannot "
+                "guess which one it means. Say so with `user_id=`, or `--user` on the "
+                "command line."
+            )
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO users (username, username_folded, password_hash, created_at)
+                VALUES (?, ?, '', ?)
+                """,
+                (SOLO_USERNAME, SOLO_USERNAME, datetime.now().isoformat(timespec="seconds")),
+            )
+        return int(cursor.lastrowid or 0)
 
     def __enter__(self) -> Database:
         return self
@@ -226,10 +370,10 @@ class Database:
             connection.execute(
                 """
                 INSERT INTO applications (
-                    dedup_key, status, category, note, user_values, link_text,
-                    found_at, updated_at
-                ) VALUES (?,?,?,?,?,?,?,?)
-                ON CONFLICT(dedup_key) DO UPDATE SET
+                    user_id, dedup_key, status, category, note, user_values,
+                    link_text, found_at, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(user_id, dedup_key) DO UPDATE SET
                     -- The app refreshes what it derived; it never touches status
                     -- or the user's own columns.
                     category = excluded.category,
@@ -237,6 +381,7 @@ class Database:
                     updated_at = excluded.updated_at
                 """,
                 (
+                    self.user_id,
                     row.dedup_key,
                     str(row.status),
                     row.category,
@@ -266,11 +411,12 @@ class Database:
         with self.transaction() as connection:
             cursor = connection.execute(
                 """
-                INSERT INTO runs (started_at, finished_at, fetched, added,
-                                  duplicates, rejected, errors)
-                VALUES (?,?,?,?,?,?,?)
+                INSERT INTO runs (user_id, started_at, finished_at, fetched,
+                                  added, duplicates, rejected, errors)
+                VALUES (?,?,?,?,?,?,?,?)
                 """,
                 (
+                    self.user_id,
                     started_at.isoformat(timespec="seconds"),
                     datetime.now().isoformat(timespec="seconds"),
                     fetched,
@@ -320,8 +466,10 @@ class Database:
             SELECT p.*, a.status, a.category, a.note, a.user_values, a.link_text, a.found_at
             FROM postings p
             JOIN applications a ON a.dedup_key = p.dedup_key
+            WHERE a.user_id = ?
             ORDER BY a.found_at DESC, p.company
-            """
+            """,
+            (self.user_id,),
         )
         return [_row_from_record(record) for record in cursor.fetchall()]
 
@@ -332,8 +480,10 @@ class Database:
     def _filter(
         self, status: str | None, query: str, source: str | None
     ) -> tuple[str, list[Any]]:
-        clauses: list[str] = []
-        values: list[Any] = []
+        # The account comes first and is never optional. A missing `user_id`
+        # here would not raise, it would show one person another person's search.
+        clauses: list[str] = ["a.user_id = ?"]
+        values: list[Any] = [self.user_id]
         if status:
             clauses.append("a.status = ?")
             values.append(status)
@@ -352,8 +502,7 @@ class Database:
                 " OR LOWER(p.tags) LIKE ?)"
             )
             values.extend([like] * 5)
-        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-        return where, values
+        return f" WHERE {' AND '.join(clauses)}", values
 
     def rows(
         self,
@@ -396,22 +545,39 @@ class Database:
         cursor = self._connection.execute(
             "SELECT p.*, a.status, a.category, a.note, a.user_values, a.link_text,"
             " a.found_at FROM postings p JOIN applications a ON a.dedup_key = p.dedup_key"
-            " WHERE p.dedup_key = ?",
-            (dedup_key,),
+            " WHERE a.user_id = ? AND p.dedup_key = ?",
+            (self.user_id, dedup_key),
         )
         record = cursor.fetchone()
         return _row_from_record(record) if record else None
 
     def delete_row(self, dedup_key: str) -> bool:
-        """Forget a job entirely, history included. Only the user asks for this."""
+        """Forget a job entirely, history included. Only the user asks for this.
+
+        The ad itself only goes when the last account tracking it lets go.
+        Deleting it outright would reach into somebody else's spreadsheet.
+        """
         with self.transaction() as connection:
             cursor = connection.execute(
-                "DELETE FROM postings WHERE dedup_key = ?", (dedup_key,)
+                "DELETE FROM applications WHERE user_id = ? AND dedup_key = ?",
+                (self.user_id, dedup_key),
+            )
+            connection.execute(
+                "DELETE FROM application_events WHERE user_id = ? AND dedup_key = ?",
+                (self.user_id, dedup_key),
+            )
+            connection.execute(
+                "DELETE FROM postings WHERE dedup_key = ?"
+                " AND NOT EXISTS (SELECT 1 FROM applications WHERE dedup_key = ?)",
+                (dedup_key, dedup_key),
             )
         return cursor.rowcount > 0
 
     def known_keys(self) -> set[str]:
-        cursor = self._connection.execute("SELECT dedup_key FROM postings")
+        """The ads this account already tracks -- not every ad on the install."""
+        cursor = self._connection.execute(
+            "SELECT dedup_key FROM applications WHERE user_id = ?", (self.user_id,)
+        )
         return {record[0] for record in cursor.fetchall()}
 
     def source_health(self) -> list[dict[str, Any]]:
@@ -420,7 +586,8 @@ class Database:
 
     def runs(self, limit: int = 20) -> list[dict[str, Any]]:
         cursor = self._connection.execute(
-            "SELECT * FROM runs ORDER BY id DESC LIMIT ?", (limit,)
+            "SELECT * FROM runs WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+            (self.user_id, limit),
         )
         return [dict(record) for record in cursor.fetchall()]
 
@@ -430,11 +597,13 @@ class Database:
         with self.transaction() as connection:
             connection.execute(
                 """
-                INSERT INTO profiles (name, kind, payload, updated_at) VALUES (?,?,?,?)
-                ON CONFLICT(name, kind) DO UPDATE SET
+                INSERT INTO profiles (user_id, name, kind, payload, updated_at)
+                VALUES (?,?,?,?,?)
+                ON CONFLICT(user_id, name, kind) DO UPDATE SET
                     payload = excluded.payload, updated_at = excluded.updated_at
                 """,
                 (
+                    self.user_id,
                     name,
                     kind,
                     json.dumps(payload, default=str),
@@ -444,21 +613,24 @@ class Database:
 
     def load_profile(self, name: str, kind: str) -> dict[str, Any] | None:
         cursor = self._connection.execute(
-            "SELECT payload FROM profiles WHERE name = ? AND kind = ?", (name, kind)
+            "SELECT payload FROM profiles WHERE user_id = ? AND name = ? AND kind = ?",
+            (self.user_id, name, kind),
         )
         record = cursor.fetchone()
         return json.loads(record[0]) if record else None
 
     def list_profiles(self, kind: str) -> list[str]:
         cursor = self._connection.execute(
-            "SELECT name FROM profiles WHERE kind = ? ORDER BY name", (kind,)
+            "SELECT name FROM profiles WHERE user_id = ? AND kind = ? ORDER BY name",
+            (self.user_id, kind),
         )
         return [record[0] for record in cursor.fetchall()]
 
     def delete_profile(self, name: str, kind: str) -> bool:
         with self.transaction() as connection:
             cursor = connection.execute(
-                "DELETE FROM profiles WHERE name = ? AND kind = ?", (name, kind)
+                "DELETE FROM profiles WHERE user_id = ? AND name = ? AND kind = ?",
+                (self.user_id, name, kind),
             )
         return cursor.rowcount > 0
 

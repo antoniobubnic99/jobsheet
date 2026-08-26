@@ -8,6 +8,11 @@ id for the running commentary.
 Each subscriber gets its own queue, primed with whatever the run has already
 said. That means a browser that connects late, reloads mid-search, or opens the
 page in a second tab still sees the whole story rather than joining halfway.
+
+One manager serves every account, because the runs are in memory and there is no
+sense in a dictionary per person. Each run therefore carries the account it
+belongs to and the database handle to write itself into; `UserRuns` in
+`api.state` is what stops one account seeing another's searches.
 """
 
 from __future__ import annotations
@@ -24,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 from jobsheet.core.matching import SearchProfile
 from jobsheet.pipeline import RunReport, SourceRequest, run_search
 from jobsheet.sheet.row import JobRow
+from jobsheet.store.db import Database
 
 if TYPE_CHECKING:  # pragma: no cover
     from jobsheet.api.state import AppState
@@ -51,6 +57,11 @@ class SearchRun:
     id: str
     started_at: datetime
     requests: list[SourceRequest]
+    user_id: int
+    # The account's own handle on the database. Held rather than looked up
+    # again later: the run outlives the request that started it, and by the
+    # time it finishes there is no signed-in user to ask.
+    db: Database = field(repr=False)
     phase: RunPhase = RunPhase.RUNNING
     lines: list[str] = field(default_factory=list)
     report: RunReport | None = None
@@ -134,6 +145,8 @@ class RunManager:
         requests: list[SourceRequest],
         profile: SearchProfile | None = None,
         *,
+        db: Database,
+        user_id: int,
         today: date | None = None,
         max_items: int = 200,
         max_enrich: int = 40,
@@ -143,6 +156,8 @@ class RunManager:
             id=uuid.uuid4().hex[:12],
             started_at=datetime.now(),
             requests=list(requests),
+            user_id=user_id,
+            db=db,
         )
         self._runs[run.id] = run
         self._forget_old()
@@ -176,7 +191,7 @@ class RunManager:
             report = await run_search(
                 run.requests,
                 profile,
-                existing=self.state.db.all_rows(),
+                existing=run.db.all_rows(),
                 http=self.state.http,
                 today=today,
                 max_items=max_items,
@@ -203,8 +218,8 @@ class RunManager:
 
     def _record(self, run: SearchRun, report: RunReport) -> None:
         """Everything a finished search leaves behind on disk."""
-        self.state.db.save_rows(report.rows)
-        self.state.db.record_run(
+        run.db.save_rows(report.rows)
+        run.db.record_run(
             fetched=report.fetched,
             added=report.new_count,
             duplicates=report.duplicates,
@@ -215,6 +230,8 @@ class RunManager:
         for request in run.requests:
             source_id = request.source_id
             failure = report.errors.get(source_id)
+            # Source health is a fact about the source, not about the account,
+            # so it is the one thing a run writes that everybody shares.
             self.state.db.record_source_health(
                 source_id,
                 ok=failure is None,

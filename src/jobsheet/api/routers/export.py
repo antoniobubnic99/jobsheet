@@ -23,7 +23,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from jobsheet.api.state import AppState, CurrentState
+from jobsheet.api.state import CurrentState, UserSession
 from jobsheet.exporters.csv import to_csv
 from jobsheet.exporters.jsonl import to_json, to_jsonl
 from jobsheet.sheet import writer
@@ -49,7 +49,7 @@ def _filename(stem: str, suffix: str) -> str:
     return f"{stem}-{date.today().isoformat()}.{suffix}"
 
 
-def _rows(state: AppState, statuses: list[str]) -> list[JobRow]:
+def _rows(state: UserSession, statuses: list[str]) -> list[JobRow]:
     rows = state.db.all_rows()
     if statuses:
         wanted = set(statuses)

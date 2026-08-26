@@ -18,19 +18,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from jobsheet.api.serialize import rows_json
 from jobsheet.api.state import CurrentState
 from jobsheet.core.matching import SearchProfile
+from jobsheet.core.setup import SourceChoice
 from jobsheet.pipeline import SourceRequest
 from jobsheet.sources import registry
 
 router = APIRouter(prefix="/api/search", tags=["search"])
-
-
-class SourceChoice(BaseModel):
-    """One source the user picked, with the answers to its own form."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    source_id: str
-    params: dict[str, Any] = Field(default_factory=dict)
 
 
 class SearchRequest(BaseModel):

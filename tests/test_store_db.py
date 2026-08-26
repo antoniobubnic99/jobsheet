@@ -19,6 +19,7 @@ import pytest
 from jobsheet.core.models import ApplicationStatus, Posting, Workplace
 from jobsheet.sheet.row import JobRow
 from jobsheet.store.db import MIGRATIONS, Database
+from jobsheet.store.users import UserStore
 
 FOUND = date(2026, 8, 24)
 
@@ -203,15 +204,28 @@ class TestUnreadableDates:
 
 
 class TestKnownKeys:
-    def test_it_lists_every_url_ever_seen(self, db: Database) -> None:
+    def test_it_lists_every_url_this_account_tracks(self, db: Database) -> None:
         db.save_rows([job(1), job(2)])
         assert db.known_keys() == {"example.test/j/1", "example.test/j/2"}
 
-    def test_an_ad_seen_without_being_tracked_still_counts(self, db: Database) -> None:
-        """`upsert_posting` alone is enough to stop the ad coming back as new."""
+    def test_an_ad_stored_without_being_tracked_does_not_count(self, db: Database) -> None:
+        """The ad table is shared between accounts, so it cannot answer this.
+
+        Before accounts, an ad merely seen counted as known. It cannot now: one
+        shared row would tell every account on the install that it had already
+        seen an ad only one of them had. What an account knows is what it tracks.
+        """
         db.upsert_posting(posting(9), seen_on=FOUND)
-        assert "example.test/j/9" in db.known_keys()
+        assert "example.test/j/9" not in db.known_keys()
         assert db.all_rows() == []
+
+    def test_another_account_tracking_an_ad_does_not_make_it_known(
+        self, db: Database
+    ) -> None:
+        db.save_row(job(1))
+        other = db.as_user(UserStore(db).create("other", "a-good-password").id)
+        assert other.known_keys() == set()
+        assert other.all_rows() == []
 
     def test_it_is_empty_on_a_fresh_file(self, db: Database) -> None:
         assert db.known_keys() == set()

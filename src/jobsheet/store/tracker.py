@@ -9,6 +9,10 @@ Status is the user's claim about the world, so two rules hold everywhere:
   questions people have three months into a search.
 
 The board columns are the statuses in order, which is what the kanban view draws.
+
+Every statement here is scoped to `db.user_id`, the account the handle was
+opened for. Status is a claim about one person's world, and two people on
+one install must never be able to move each other's cards.
 """
 
 from __future__ import annotations
@@ -55,7 +59,8 @@ class Tracker:
 
     def status_of(self, dedup_key: str) -> ApplicationStatus:
         cursor = self.db._connection.execute(
-            "SELECT status FROM applications WHERE dedup_key = ?", (dedup_key,)
+            "SELECT status FROM applications WHERE user_id = ? AND dedup_key = ?",
+            (self.db.user_id, dedup_key),
         )
         record = cursor.fetchone()
         return ApplicationStatus(record[0]) if record else ApplicationStatus.NEW
@@ -67,7 +72,8 @@ class Tracker:
         genuinely new and for one the database has never heard of.
         """
         cursor = self.db._connection.execute(
-            "SELECT 1 FROM applications WHERE dedup_key = ?", (dedup_key,)
+            "SELECT 1 FROM applications WHERE user_id = ? AND dedup_key = ?",
+            (self.db.user_id, dedup_key),
         )
         return cursor.fetchone() is not None
 
@@ -95,15 +101,24 @@ class Tracker:
         now = datetime.now()
         with self.db.transaction() as connection:
             connection.execute(
-                "UPDATE applications SET status = ?, updated_at = ? WHERE dedup_key = ?",
-                (str(status), now.isoformat(timespec="seconds"), dedup_key),
+                "UPDATE applications SET status = ?, updated_at = ?"
+                " WHERE user_id = ? AND dedup_key = ?",
+                (str(status), now.isoformat(timespec="seconds"), self.db.user_id, dedup_key),
             )
             connection.execute(
                 """
-                INSERT INTO application_events (dedup_key, at, from_status, to_status, note)
-                VALUES (?,?,?,?,?)
+                INSERT INTO application_events
+                    (user_id, dedup_key, at, from_status, to_status, note)
+                VALUES (?,?,?,?,?,?)
                 """,
-                (dedup_key, now.isoformat(timespec="seconds"), str(previous), str(status), note),
+                (
+                    self.db.user_id,
+                    dedup_key,
+                    now.isoformat(timespec="seconds"),
+                    str(previous),
+                    str(status),
+                    note,
+                ),
             )
         return StatusChange(dedup_key, now, previous, status, note)
 
@@ -111,9 +126,10 @@ class Tracker:
         cursor = self.db._connection.execute(
             """
             SELECT dedup_key, at, from_status, to_status, note
-            FROM application_events WHERE dedup_key = ? ORDER BY at, id
+            FROM application_events
+            WHERE user_id = ? AND dedup_key = ? ORDER BY at, id
             """,
-            (dedup_key,),
+            (self.db.user_id, dedup_key),
         )
         return [
             StatusChange(
@@ -142,10 +158,12 @@ class Tracker:
 
         with self.db.transaction() as connection:
             connection.execute(
-                "UPDATE applications SET user_values = ?, updated_at = ? WHERE dedup_key = ?",
+                "UPDATE applications SET user_values = ?, updated_at = ?"
+                " WHERE user_id = ? AND dedup_key = ?",
                 (
                     json.dumps(values, default=str),
                     datetime.now().isoformat(timespec="seconds"),
+                    self.db.user_id,
                     dedup_key,
                 ),
             )

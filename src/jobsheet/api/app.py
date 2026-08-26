@@ -25,6 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from jobsheet import __version__
 from jobsheet.api.routers import (
     applications,
+    auth,
     export,
     layouts,
     letter,
@@ -58,6 +59,9 @@ for _suffix, _media_type_name in (
     mimetypes.add_type(_media_type_name, _suffix)
 
 ROUTERS = (
+    # Auth first: its own routes are the only ones a signed-out browser can
+    # reach, and registering them ahead of the rest keeps that visible here.
+    auth.router,
     settings_router.router,
     sources.router,
     search.router,

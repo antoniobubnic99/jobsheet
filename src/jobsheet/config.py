@@ -13,13 +13,20 @@ the portable Windows ZIP uses to keep everything beside the executable.
 from __future__ import annotations
 
 import os
+import re
 import secrets
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
-__all__ = ["HOME_ENV", "Settings", "default_home"]
+from jobsheet.core.matching import fold
+
+if TYPE_CHECKING:  # pragma: no cover -- imported for the annotation only
+    from jobsheet.store.users import User
+
+__all__ = ["HOME_ENV", "Settings", "default_home", "user_folder"]
 
 HOME_ENV = "JOBSHEET_HOME"
 
@@ -46,6 +53,21 @@ def default_home() -> Path:
         return Path.home() / "Library" / "Application Support" / "JobSheet"
     base = os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share"
     return Path(base) / "jobsheet"
+
+
+def user_folder(user: User) -> str:
+    """The directory name for one account, under `home/users`.
+
+    The id leads because it is the only part guaranteed unique: usernames are
+    unique after folding, but folding to a filesystem-safe name throws away
+    characters, and two different names can arrive at the same one. The name
+    follows because a person looking in the folder deserves to recognise it --
+    which is why the app's own folding is used rather than a plain casefold.
+    A `casefold` leaves "Ž" intact for the character class to delete, and
+    "Željko" becomes "eljko"; folding transliterates it to "zeljko" first.
+    """
+    slug = re.sub(r"[^a-z0-9._-]+", "-", fold(user.username)).strip("-.")
+    return f"{user.id}-{slug}" if slug else str(user.id)
 
 
 class Settings(BaseModel):
@@ -90,6 +112,30 @@ class Settings(BaseModel):
     @property
     def url(self) -> str:
         return f"http://{self.host}:{self.port}/"
+
+    def for_user(self, user: User, *, primary: bool) -> Settings:
+        """The same install, seen from one account.
+
+        The database is deliberately *not* per-account: it is one file holding
+        everybody, with every row labelled, which is what makes a shared ad
+        shared. Everything a person opens in another program -- the workbook,
+        its backups, letter templates -- is theirs and lives apart.
+
+        The first account keeps the original flat layout, so that upgrading an
+        install that predates accounts does not appear to move somebody's
+        spreadsheet out from under them. Everyone after them gets a folder.
+        """
+        base = self.home if primary else self.home / "users" / user_folder(user)
+        return self.model_copy(
+            update={
+                "home": base,
+                "database": self.database_path,
+                "workbook": (
+                    Path(user.workbook).expanduser() if user.workbook else base / "jobs.xlsx"
+                ),
+                "backup_dir": base / "backups",
+            }
+        )
 
     def prepare(self) -> Settings:
         """Create the directories. Called once, at start-up."""

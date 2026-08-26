@@ -1,15 +1,29 @@
 """The `jobsheet` command.
 
-Four things, and the first one is what most people ever use:
+Five things, and the first one is what most people ever use:
 
     jobsheet                 open the interface in a browser
     jobsheet run             search from a saved profile, without a browser
     jobsheet export          rewrite the workbook, or dump CSV/JSON
     jobsheet sources         list what is installed
+    jobsheet users           accounts on this install
 
 `run` and `export` exist so the whole app is scriptable -- a scheduled task can
 refresh a spreadsheet overnight with no window open. They are also what the
 tests drive, which keeps the command surface honest.
+
+## Accounts, and why the command line does not ask for a password
+
+An install can hold several job searches, so every command that touches data
+needs to know whose. `--user` says. Left out, it means the only account there
+is, and saying nothing on a one-account install works exactly as it always did.
+
+What `--user` does *not* do is ask for the password. That is not an oversight
+and not a hole worth plugging: this command reads the SQLite file directly, and
+anyone who can run it can equally well open that file with any SQLite tool on
+earth. A prompt here would ask for a secret it has no power to insist on. The
+password guards the browser interface -- and therefore every web page that could
+otherwise reach `127.0.0.1` -- which is a boundary that actually exists.
 
 Argparse rather than a CLI framework: this is a desktop app whose front door is
 a double-clicked launcher, and a dependency to render four subcommands would be
@@ -20,11 +34,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import getpass
 import json
 import socket
 import sys
 import threading
 import webbrowser
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -40,6 +57,7 @@ from jobsheet.sheet.layout import SheetLayout
 from jobsheet.sources import registry
 from jobsheet.store.db import Database
 from jobsheet.store.tracker import Tracker, merge_from_sheet
+from jobsheet.store.users import User, UserError, UserStore
 
 __all__ = ["build_parser", "main"]
 
@@ -65,6 +83,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="where JobSheet keeps its database, backups and workbook",
     )
     parser.add_argument("--workbook", type=Path, help="path to the .xlsx file")
+    parser.add_argument(
+        "--user",
+        help="which account to act as (default: the only one)",
+    )
 
     sub = parser.add_subparsers(dest="command")
 
@@ -100,6 +122,16 @@ def build_parser() -> argparse.ArgumentParser:
     sources = sub.add_parser("sources", help="list installed sources")
     sources.add_argument("--json", action="store_true", help="machine-readable output")
 
+    users = sub.add_parser("users", help="accounts on this install")
+    users_sub = users.add_subparsers(dest="users_command")
+    users_sub.add_parser("list", help="show the accounts (the default)")
+    add_user = users_sub.add_parser("add", help="create an account")
+    add_user.add_argument("username")
+    add_user.add_argument("--password", help="omit to be asked, without echo")
+    set_password = users_sub.add_parser("password", help="set an account's password")
+    set_password.add_argument("username")
+    set_password.add_argument("--password", help="omit to be asked, without echo")
+
     return parser
 
 
@@ -110,6 +142,91 @@ def _settings_from(args: argparse.Namespace) -> Settings:
     if args.workbook:
         fields["workbook"] = args.workbook
     return Settings(**fields).prepare()
+
+
+def _resolve_user(store: UserStore, wanted: str | None, db: Database) -> User:
+    """Which account this invocation is acting as."""
+    if wanted:
+        user = store.by_username(wanted)
+        if user is None:
+            known = ", ".join(account.username for account in store.all()) or "none yet"
+            raise SystemExit(f"no account called {wanted!r} here. Accounts: {known}")
+        return user
+
+    try:
+        user_id = db.user_id
+    except LookupError:
+        known = ", ".join(account.username for account in store.all())
+        raise SystemExit(
+            f"this JobSheet has several accounts ({known}); say which with --user"
+        ) from None
+    found = store.by_id(user_id)
+    assert found is not None
+    return found
+
+
+@contextmanager
+def _open(args: argparse.Namespace) -> Iterator[tuple[Settings, Database]]:
+    """The database narrowed to one account, and that account's own paths.
+
+    Both halves matter and they have to be decided together: the rows come from
+    the database, the workbook they are written into comes from the settings, and
+    reading one account's rows into another's spreadsheet is the exact accident
+    this is shaped to prevent.
+    """
+    settings = _settings_from(args)
+    with Database(settings.database_path) as file_db:
+        store = UserStore(file_db)
+        user = _resolve_user(store, getattr(args, "user", None), file_db)
+        primary = user.id == min(account.id for account in store.all())
+        scoped = settings.for_user(user, primary=primary)
+        if args.workbook:
+            # An explicit path wins over the account's remembered one: the person
+            # typing it is saying where they want this particular run to land.
+            scoped = scoped.model_copy(update={"workbook": args.workbook})
+        yield scoped.prepare(), file_db.as_user(user.id)
+
+
+# ------------------------------------------------------------------- `users`
+
+
+def command_users(args: argparse.Namespace) -> int:
+    settings = _settings_from(args)
+    with Database(settings.database_path) as db:
+        store = UserStore(db)
+        action = getattr(args, "users_command", None) or "list"
+
+        if action == "list":
+            accounts = store.all()
+            if not accounts:
+                _say("No accounts yet. The interface makes the first one.")
+                return 0
+            for account in accounts:
+                state = "unclaimed" if account.is_claimable else "ready"
+                seen = account.last_seen_at.date().isoformat() if account.last_seen_at else "never"
+                _say(f"{account.id:>3}  {account.username:<24} {state:<10} last seen {seen}")
+            return 0
+
+        password = args.password or getpass.getpass("Password: ")
+        try:
+            if action == "add":
+                created = store.create(args.username, password)
+                _say(f"created {created.username!r} (id {created.id})")
+            else:
+                # Not `account`: that name is the loop variable above, and mypy
+                # rightly refuses to let a `User` become a `User | None`.
+                wanted = store.by_username(args.username)
+                if wanted is None:
+                    _say(f"no account called {args.username!r}")
+                    return 2
+                store.set_password(wanted.id, password)
+                store.close_all(wanted.id)
+                _say(f"password set for {wanted.username!r}; other sessions signed out")
+        except UserError as error:
+            _say(error.message)
+            return 2
+    return 0
+
 
 
 # ------------------------------------------------------------------- `serve`
@@ -190,7 +307,6 @@ def parse_params(pairs: list[str]) -> dict[str, dict[str, Any]]:
 
 
 def command_run(args: argparse.Namespace) -> int:
-    settings = _settings_from(args)
     installed = set(registry.available())
     if unknown := [name for name in args.sources if name not in installed]:
         _say(f"not installed: {', '.join(unknown)}")
@@ -200,7 +316,7 @@ def command_run(args: argparse.Namespace) -> int:
     params = parse_params(args.param)
     started_at = datetime.now()
 
-    with Database(settings.database_path) as db:
+    with _open(args) as (_settings, db):
         profile = SearchProfile()
         if args.profile:
             saved = db.load_profile(args.profile, "search")
@@ -256,9 +372,7 @@ def command_run(args: argparse.Namespace) -> int:
 
 
 def command_export(args: argparse.Namespace) -> int:
-    settings = _settings_from(args)
-
-    with Database(settings.database_path) as db:
+    with _open(args) as (settings, db):
         layout: SheetLayout | None = None
         if args.layout:
             saved = db.load_profile(args.layout, "layout")
@@ -357,6 +471,7 @@ COMMANDS = {
     "run": command_run,
     "export": command_export,
     "sources": command_sources,
+    "users": command_users,
 }
 
 

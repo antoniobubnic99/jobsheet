@@ -26,31 +26,64 @@ The token is also accepted as a query parameter, because `EventSource` -- the
 browser API behind the live progress stream -- cannot send custom headers. On a
 loopback-only server with no third-party requests that is an acceptable trade,
 and it is confined to this one mechanism.
+
+## Why there is also a password
+
+The token answers "did this request come from the page JobSheet served?". It
+cannot answer "which of the people who use this laptop is at the keyboard?", and
+once an install can hold several job searches, that is a different question with
+a different answer. So requests carry both: the token, from the page, and a
+session cookie, from signing in. Neither substitutes for the other -- the token
+without a session is a stranger, and a session without the token is a page we
+did not serve.
+
+Everything below the sign-in line therefore depends on `require_user`, which
+hands back a `UserSession`: the same database file, the same HTTP client and the
+same run manager as everybody else, but narrowed to one account's rows and one
+account's workbook. Routers ask for `CurrentState` and get that, so a router
+cannot reach the unscoped database by accident -- it would have to go looking.
 """
 
 from __future__ import annotations
 
 import secrets
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
-from fastapi import Depends, Header, HTTPException, Query, Request, status
+from fastapi import Cookie, Depends, Header, HTTPException, Query, Request, status
 
 from jobsheet.config import Settings
 from jobsheet.core.http import HttpClient
 from jobsheet.store.db import Database
 from jobsheet.store.tracker import Tracker
+from jobsheet.store.users import LoginThrottle, User, UserStore
+
+if TYPE_CHECKING:  # pragma: no cover
+    from datetime import date
+
+    from jobsheet.api.runs import RunManager, SearchRun
+    from jobsheet.core.matching import SearchProfile
+    from jobsheet.pipeline import SourceRequest
 
 __all__ = [
+    "SESSION_COOKIE",
     "TOKEN_HEADER",
     "AppState",
     "CurrentDb",
     "CurrentState",
     "CurrentTracker",
+    "CurrentUser",
+    "TokenOnly",
+    "UserSession",
     "get_state",
     "require_token",
+    "require_user",
 ]
 
 TOKEN_HEADER = "X-JobSheet-Token"  # noqa: S105 -- a header name, not a secret
+
+# HttpOnly and SameSite=strict, set by the sign-in endpoint. Not `secure`: this
+# is plain HTTP on loopback, and marking it secure would simply stop it working.
+SESSION_COOKIE = "jobsheet_session"
 
 ALLOWED_HOSTS = frozenset({"127.0.0.1", "localhost", "[::1]", "::1"})
 
@@ -63,6 +96,11 @@ class AppState:
         self.db = Database(self.settings.database_path)
         self.tracker = Tracker(self.db)
         self.http = HttpClient()
+        self.users = UserStore(self.db)
+        # In memory, deliberately: see `LoginThrottle`.
+        self.throttle = LoginThrottle()
+        self._primary_user_id: int | None = None
+        self.users.purge_expired()
         # Imported here rather than at module scope: the run manager imports the
         # pipeline, which imports every source, and the routers do not all need
         # that cost.
@@ -70,10 +108,93 @@ class AppState:
 
         self.runs = RunManager(self)
 
+    @property
+    def primary_user_id(self) -> int | None:
+        """The first account ever made here, which keeps the original file layout.
+
+        Cached because it answers a question that cannot change while the process
+        runs: accounts are only ever added, and the lowest id stays the lowest.
+        """
+        if self._primary_user_id is None:
+            row = self.db._connection.execute("SELECT MIN(id) FROM users").fetchone()
+            self._primary_user_id = int(row[0]) if row and row[0] is not None else None
+        return self._primary_user_id
+
+    def session_for(self, user: User) -> UserSession:
+        return UserSession(self, user)
+
     async def aclose(self) -> None:
         await self.runs.cancel_all()
         await self.http.aclose()
         self.db.close()
+
+
+class UserSession:
+    """One account's view of the install, built fresh for each request.
+
+    It wears the same attribute names as `AppState` -- `db`, `tracker`,
+    `settings`, `runs`, `http` -- so a router reads the same either way. The
+    difference is that every one of them is narrowed to this account, and the
+    narrowing happens here rather than being remembered at thirty call sites.
+    """
+
+    def __init__(self, app: AppState, user: User) -> None:
+        self.app = app
+        self.user = user
+        self.settings = app.settings.for_user(
+            user, primary=user.id == app.primary_user_id
+        ).prepare()
+        self.db = app.db.as_user(user.id)
+        self.tracker = Tracker(self.db)
+        self.http = app.http
+        self.users = app.users
+        self.runs = UserRuns(app.runs, self.db, user.id)
+
+
+class UserRuns:
+    """The shared run manager, showing one account only its own searches.
+
+    Runs live in memory for as long as the process does, and the interface polls
+    them by id. An id is a random hex string, so guessing one is not a plausible
+    attack -- but "not plausible" is a poor foundation, and filtering here costs
+    a comparison.
+    """
+
+    def __init__(self, manager: RunManager, db: Database, user_id: int) -> None:
+        self._manager = manager
+        self._db = db
+        self._user_id = user_id
+
+    def start(
+        self,
+        requests: list[SourceRequest],
+        profile: SearchProfile | None = None,
+        *,
+        today: date | None = None,
+        max_items: int = 200,
+        max_enrich: int = 40,
+    ) -> SearchRun:
+        return self._manager.start(
+            requests,
+            profile,
+            db=self._db,
+            user_id=self._user_id,
+            today=today,
+            max_items=max_items,
+            max_enrich=max_enrich,
+        )
+
+    def get(self, run_id: str) -> SearchRun | None:
+        run = self._manager.get(run_id)
+        return run if run is not None and run.user_id == self._user_id else None
+
+    def recent(self) -> list[SearchRun]:
+        return [run for run in self._manager.recent() if run.user_id == self._user_id]
+
+    async def cancel(self, run_id: str) -> bool:
+        if self.get(run_id) is None:
+            return False
+        return await self._manager.cancel(run_id)
 
 
 def get_state(request: Request) -> AppState:
@@ -112,7 +233,33 @@ def require_token(
     return state
 
 
-CurrentState = Annotated[AppState, Depends(require_token)]
+def require_user(
+    state: Annotated[AppState, Depends(require_token)],
+    session: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
+) -> UserSession:
+    """The account behind this request, or a 401 the interface knows to act on.
+
+    The token check runs first, as a dependency, so a request from somewhere we
+    did not serve is turned away before it learns anything about who is signed
+    in -- including whether anybody is.
+    """
+    user = state.users.resolve(session or "")
+    if user is None:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "Sign in to JobSheet to use this.",
+            headers={"X-JobSheet-Auth": "required"},
+        )
+    return state.session_for(user)
+
+
+def current_user(session: Annotated[UserSession, Depends(require_user)]) -> User:
+    return session.user
+
+
+CurrentState = Annotated[UserSession, Depends(require_user)]
+TokenOnly = Annotated[AppState, Depends(require_token)]
+CurrentUser = Annotated[User, Depends(current_user)]
 
 
 def get_db(state: CurrentState) -> Database:
