@@ -6,7 +6,8 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import './styles/global.css';
 import './i18n';
 
-import Shell from './components/Shell';
+import { AccountProvider } from './lib/account';
+import Gate from './components/Gate';
 import SearchScreen from './screens/SearchScreen';
 import ResultsScreen from './screens/ResultsScreen';
 import SheetDesigner from './screens/SheetDesigner';
@@ -25,7 +26,10 @@ const queryClient = new QueryClient({
 const router = createBrowserRouter([
   {
     path: '/',
-    element: <Shell />,
+    // `Gate` decides between the door, the wizard and the app, and only the
+    // last of the three renders an `Outlet` -- so these children exist for
+    // every address but appear only once somebody is through both.
+    element: <Gate />,
     children: [
       { index: true, element: <SearchScreen /> },
       { path: 'results', element: <ResultsScreen /> },
@@ -40,7 +44,9 @@ const router = createBrowserRouter([
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <AccountProvider>
+        <RouterProvider router={router} />
+      </AccountProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

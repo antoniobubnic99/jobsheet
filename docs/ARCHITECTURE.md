@@ -20,7 +20,7 @@ flowchart TB
     end
 
     subgraph proc["One Python process"]
-        api["FastAPI · /api/*<br/>loopback + Host check + per-process token"]
+        api["FastAPI · /api/*<br/>loopback + Host check<br/>page token + session"]
         cli["CLI · jobsheet run / export / sources"]
         pipe["pipeline.run_search<br/>fetch → dedup → filter → enrich → reject"]
         core["core · Posting · matching · dates · dedup · HttpClient"]
@@ -65,7 +65,7 @@ than habits each connector has to remember.
 | `jobsheet.core` | `Posting`, keyword matching, date parsing, URL de-duplication, the HTTP client | nothing above it |
 | `jobsheet.sources` | the `Source` contract, the registry, 14 connectors | `core` |
 | `jobsheet.sheet` | `SheetLayout`, the workbook reader/writer, themes, checkboxes | `core` |
-| `jobsheet.store` | SQLite schema, migrations, application tracking | `core`, `sheet` |
+| `jobsheet.store` | SQLite schema, migrations, application tracking, accounts | `core`, `sheet` |
 | `jobsheet.pipeline` | one search, end to end | all of the above |
 | `jobsheet.exporters` | CSV, JSON, JSONL, covering-letter drafts | `core`, `sheet` |
 | `jobsheet.api` | FastAPI routers, auth, serialisation, run bookkeeping | everything |
@@ -165,14 +165,42 @@ of its listings say "Zagreb" for work in Split, Osijek or on an island.
 |---|---|---|
 | Path | `<home>/jobs.xlsx` | `<home>/jobsheet.sqlite3` |
 | Role | what the user works in | what the app remembers |
-| Holds | current rows, the user's ticks and notes | every posting ever seen, status history, run history, source health, saved profiles |
+| Holds | current rows, the user's ticks and notes | every posting ever seen, status history, run history, source health, saved profiles, accounts |
+| Per account | one each | one for the whole install, every row labelled |
 
 A spreadsheet is easy to reason about and easy to edit, but it cannot hold a
 history — and a user who deletes a row should not thereby lose the record that
 they applied for that job in June. Hence both.
 
 Migrations are a plain list applied in order and tracked by SQLite's own
-`user_version`. Four tables do not justify a migration framework.
+`user_version`. Six tables do not justify a migration framework.
+
+### One file, several people
+
+An install can hold several job searches that never see each other, and the line
+between them runs through the schema rather than through the filesystem:
+
+* **`postings` is shared.** An ad is an ad whoever found it, and two people
+  hunting the same market would otherwise store two copies of every vacancy in
+  the country. A row goes only when the last account tracking it lets go.
+* **Everything a person knows or decides carries a `user_id`.** `applications`,
+  `application_events`, `runs` and `profiles` — status, notes, saved searches,
+  run history. `source_health` stays shared: whether HZZ answered this morning is
+  a fact about HZZ.
+* **`Database.as_user(id)`** returns a second handle on the same open connection,
+  scoped to one account. Every statement that touches a labelled table says whose
+  rows it means. The failure mode of forgetting is not an exception — it is one
+  person quietly reading another's job search — so `tests/test_auth.py` tests each
+  of those tables from both sides.
+* **Workbooks are not shared.** The first account keeps the original flat layout
+  (`<home>/jobs.xlsx`), so upgrading an install that predates accounts does not
+  appear to move somebody's spreadsheet; later accounts get
+  `<home>/users/<id>-<name>/`.
+
+Upgrading is the interesting case. Migration 2 hands every existing row to a
+placeholder account with an empty password hash. Nothing can authenticate against
+an empty hash, so that account cannot be signed into — it can only be *claimed*,
+once, from the sign-in screen.
 
 Two rules keep the layers from fighting:
 
@@ -235,6 +263,28 @@ that:
    The interface loads nothing from anywhere else, so it says so; anything
    reaching for the network from inside the page is a bug or an intrusion, and
    either way it should fail loudly.
+
+### The token and the password answer different questions
+
+The token answers *did this request come from the page JobSheet served?* It
+cannot answer *which of the people who use this laptop is at the keyboard?*, and
+once an install holds several searches that is a separate question. So a request
+below the sign-in line carries both: the token in a header, from the page, and a
+session cookie, from signing in. Neither substitutes for the other — a token
+without a session is a stranger, a session without the token is a page we did not
+serve. `require_user` in `api/state.py` depends on `require_token`, in that
+order, so a request from somewhere we did not serve is turned away before it can
+learn whether anybody is signed in.
+
+The cookie is `HttpOnly` (no script on the page can copy it out) and
+`SameSite=strict` (a request another site provokes arrives without it). It is
+deliberately *not* `Secure`: this is plain HTTP on loopback, and a secure cookie
+would simply never be sent.
+
+What the password is not is encryption. Anyone with a shell on the machine can
+open the SQLite file, and the command line does exactly that — which is why
+`jobsheet --user` does not prompt for one. The boundary it defends is the browser
+one, and that boundary is real.
 
 Two smaller guards live in the same file:
 

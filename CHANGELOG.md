@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+**Accounts**
+
+- A username and a password on first run, then a wizard that asks the eight
+  questions the search screen otherwise expects you to already know the answers
+  to. Finishing it lands you on a search that is ready to run.
+- One install can hold several job searches that never see each other. Ads are
+  shared between accounts — an ad is an ad whoever found it — while everything a
+  person knows or decides about one is theirs: status, notes, saved searches, run
+  history, and their own workbook.
+- Passwords are stored as salted scrypt hashes with the cost written into the
+  record; session tokens are stored only as SHA-256 digests. Repeated wrong
+  guesses are slowed down per username, in memory.
+- The session cookie is HttpOnly and SameSite=strict, and does *not* replace the
+  per-process page token — a request needs both.
+- `jobsheet users` (list, add, set a password) and a global `--user`, which may
+  be omitted whenever there is only one account.
+- The first account keeps the original flat file layout; later ones get
+  `home/users/<id>-<name>/`.
+
+### Changed
+
+- `Database.known_keys()` now means "the ads this account tracks" rather than
+  "every ad ever seen". The ad table is shared, so it can no longer answer the
+  older question for one account without answering it wrongly for the others.
+- Upgrading a database written before accounts hands everything in it to a
+  passwordless account, which the sign-in screen offers to claim. No data moves
+  and no workbook path changes.
+
 ## [0.1.0] — unreleased
 
 First public release.

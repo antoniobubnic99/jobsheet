@@ -1,5 +1,8 @@
 {
-  "app": { "name": "JobSheet", "tagline": "Collect job ads from anywhere. Get a spreadsheet you actually own." },
+  "app": {
+    "name": "JobSheet",
+    "tagline": "Collect job ads from anywhere. Get a spreadsheet you actually own."
+  },
   "nav": {
     "search": "Search",
     "results": "Results",
@@ -186,5 +189,142 @@
     "pitchPlaceholder": "The one paragraph about you that changes per job.",
     "copy": "Copy the letter"
   },
-  "error": { "title": "Something went wrong", "generic": "Could not reach JobSheet." }
+  "auth": {
+    "username": "Username",
+    "usernameHint": "3-32 characters. Letters, digits, dots, hyphens, underscores.",
+    "password": "Password",
+    "passwordHint": "At least 8 characters. Nothing else is required of it.",
+    "working": "One moment…",
+    "signOut": "Sign out",
+    "localNote": "JobSheet runs on this computer and answers nothing but this computer. The password keeps the people who share the machine apart -- it is not an account on anybody's server, and nothing leaves here.",
+    "switchToRegister": "Make another account",
+    "switchToLogin": "I already have an account",
+    "switchToClaim": "Take over the search already here",
+    "switchToFresh": "Start fresh instead",
+    "login": {
+      "title": "Sign in",
+      "lede": "Your searches, your spreadsheet, your notes.",
+      "action": "Sign in"
+    },
+    "register": {
+      "title": "Make your account",
+      "lede": "One minute of questions, then a search that runs.",
+      "action": "Make it"
+    },
+    "claim": {
+      "title": "This search is waiting for you",
+      "lede": "There are jobs, notes and statuses in this JobSheet from before it had accounts. Pick a name and a password and they are yours.",
+      "action": "Take it over"
+    },
+    "errors": {
+      "bad_credentials": "That username and password do not match.",
+      "username_taken": "That name is already in use on this computer.",
+      "username_invalid": "A username is 3-32 characters: a letter or digit first, then letters, digits, dots, hyphens or underscores.",
+      "password_too_short": "A password needs at least 8 characters.",
+      "password_too_long": "That password is too long.",
+      "password_is_username": "A password cannot be the same as the username.",
+      "too_many_attempts": "Too many attempts. Wait a moment and try again.",
+      "nothing_to_claim": "Somebody has already taken that search over.",
+      "already_claimed": "That account already has a password.",
+      "no_such_user": "That account no longer exists.",
+      "workbook_not_xlsx": "A workbook has to be an .xlsx file.",
+      "workbook_is_a_folder": "That is a folder, not a file.",
+      "workbook_folder_missing": "There is no folder at that path."
+    },
+    "changePassword": "Change password",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "passwordChanged": "Changed. Every window has been signed out, including this one.",
+    "account": "Account",
+    "accountHint": "Signed in on this computer. Your rows, your workbook."
+  },
+  "welcome": {
+    "greeting": "Welcome, {{name}}.",
+    "back": "Back",
+    "next": "Next",
+    "finish": "Take me to the search",
+    "needSource": "Pick at least one source. A search with nowhere to look finds nothing.",
+    "headline": {
+      "step": "The job",
+      "title": "What job are you after?",
+      "lede": "In your own words. Nothing filters on this -- it is how the app talks to you about your search, and how a cover letter opens.",
+      "label": "The job you want",
+      "hint": "For example: GIS analyst, kitchen porter, junior back-end developer.",
+      "placeholder": "Surveyor"
+    },
+    "keywords": {
+      "step": "Words",
+      "title": "Which words mean that job?",
+      "lede": "Ads do not use your title, they use theirs. Group the words that mean the same thing, and name each group -- the name is the category that lands in your spreadsheet. Groups are tried in order, and the first that matches wins."
+    },
+    "where": {
+      "step": "Where",
+      "title": "Where would you work?",
+      "lede": "Leave it all empty to search everywhere, which is the right answer more often than people expect.",
+      "locations": "Towns and cities",
+      "locationsHint": "Empty means anywhere. Location filtering is skipped entirely.",
+      "regions": "Counties or regions",
+      "regionsHint": "For sources that say the region rather than the town.",
+      "regionsPlaceholder": "Primorsko-goranska…",
+      "remote": "Words that mean remote",
+      "remoteHint": "An ad matching one of these counts as being where you are."
+    },
+    "freshness": {
+      "step": "Age",
+      "title": "How old may an ad be?",
+      "lede": "This only applies to ads that carry no closing date of their own. One with a deadline is judged on the deadline.",
+      "label": "Skip ads older than",
+      "hint": "Thirty days suits most searches. Lower it if you are looking every day."
+    },
+    "no": {
+      "step": "No thanks",
+      "title": "What would you rather not see?",
+      "lede": "Every one of these is optional, and every one of them is a rule you can change later.",
+      "employers": "Employers to skip",
+      "employersHint": "Agencies you have had enough of, or a former employer.",
+      "types": "Contract types to skip",
+      "typesHint": "Matched as plain words against what the ad says.",
+      "allowlist": "…except when the ad also says",
+      "allowlistHint": "This exists because of a real trap: \"na neodređeno\" (permanent) contains \"određeno\" (fixed-term), so blocking one blocks both. Anything listed here wins over the list above.",
+      "schedules": "Working patterns to skip",
+      "schedulesHint": "Night shifts, weekends, split shifts -- whatever you will not do."
+    },
+    "fine": {
+      "step": "Fine print",
+      "title": "Two rules for the awkward cases",
+      "lede": "Skip this if none of it sounds familiar. It is here for the second month of looking, when the same wrong ad keeps arriving.",
+      "evidence": "A word in the description is not enough unless",
+      "evidenceHint": "When the only match was in the body text, demand that the ad's education field mentions one of these. Empty turns the rule off.",
+      "flags": "Things worth noticing",
+      "flagsHint": "These never reject an ad, they only mark it -- a regex cannot tell a hard requirement from a nice-to-have. Name the mark, then list the words that raise it."
+    },
+    "sources": {
+      "step": "Sources",
+      "title": "Where should JobSheet look?",
+      "lede": "Every one of these is a public feed or a public API. No account, no key, nothing behind a login. Pick as many as you like -- they are fetched at the same time."
+    },
+    "workbook": {
+      "step": "The file",
+      "title": "Where should your spreadsheet live?",
+      "lede": "This is the file you will actually open. Put it somewhere you look -- your Desktop is a good answer.",
+      "label": "Workbook",
+      "hint": "Leave it empty and JobSheet keeps it with everything else. Must end in .xlsx, and the folder has to exist."
+    },
+    "summary": {
+      "label": "So, to be clear",
+      "looking": "Looking for",
+      "terms": "Words",
+      "where": "Where",
+      "sources": "Sources",
+      "freshness": "Freshness",
+      "anything": "anything",
+      "anywhere": "anywhere",
+      "days_one": "ads up to {{count}} day old",
+      "days_other": "ads up to {{count}} days old"
+    }
+  },
+  "error": {
+    "title": "Something went wrong",
+    "generic": "Could not reach JobSheet."
+  }
 }

@@ -15,6 +15,7 @@ import { formatWhen } from '@/lib/format';
 import { LANGUAGES, setLanguage, type LanguageCode } from '@/i18n';
 import { useTheme, type Theme } from '@/lib/useTheme';
 import { Loading, Note, Problem, ScreenHeader, Section } from '@/components/primitives';
+import AccountSection from '@/components/AccountSection';
 
 const THEMES: Theme[] = ['system', 'light', 'dark'];
 
@@ -72,6 +73,8 @@ export default function SettingsScreen() {
           />
         </dl>
       </Section>
+
+      <AccountSection />
 
       <Section label={t('settings.appearance')}>
         <div className="grid gap-[var(--gap)] sm:grid-cols-2">

@@ -6,6 +6,12 @@
  * here without a line being written. And the run, once started, prints its own
  * commentary live -- a search that talks to a dozen strangers' servers takes
  * long enough that silence would read as a hang.
+ *
+ * It opens filled in. The wizard that runs once after signing up writes the
+ * account's setup, and this screen reads it back, so the first thing somebody
+ * sees here is their own search with the button ready -- not the blank form the
+ * wizard exists to spare them. Seeding happens once, and only into untouched
+ * state: a setup arriving late must never overwrite something being typed.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -13,8 +19,13 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { api, ApiError } from '@/lib/api';
-import { EMPTY_PROFILE, type SearchProfile, type SourceManifest } from '@/lib/types';
+import { api, ApiError, DEFAULT_SETUP } from '@/lib/api';
+import {
+  EMPTY_PROFILE,
+  type SearchProfile,
+  type SearchSetup,
+  type SourceManifest,
+} from '@/lib/types';
 import { formatWhen } from '@/lib/format';
 import {
   ChipInput,
@@ -37,8 +48,24 @@ export default function SearchScreen() {
   const sources = useQuery({ queryKey: ['sources'], queryFn: api.sources });
   const saved = useQuery({ queryKey: ['profiles', 'search'], queryFn: () => api.profiles('search') });
 
+  // The wizard's answers. A 404 is the ordinary state for an account that
+  // predates the wizard, so it is an absence rather than an error.
+  const setup = useQuery({
+    queryKey: ['profiles', 'setup', DEFAULT_SETUP],
+    queryFn: async () => {
+      try {
+        return await api.loadProfile<SearchSetup>('setup', DEFAULT_SETUP);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+      }
+    },
+    retry: false,
+  });
+
   const [chosen, setChosen] = useState<Record<string, Record<string, unknown>>>({});
   const [profile, setProfile] = useState<SearchProfile>(EMPTY_PROFILE);
+  const [seeded, setSeeded] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
   const [lines, setLines] = useState<string[]>([]);
   const [phase, setPhase] = useState<'idle' | 'running' | 'done' | 'failed' | 'cancelled'>('idle');
@@ -59,6 +86,16 @@ export default function SearchScreen() {
       setPhase('running');
     },
   });
+
+  useEffect(() => {
+    const payload = setup.data?.payload;
+    if (seeded || !payload) return;
+    setSeeded(true);
+    setProfile(payload.profile);
+    setChosen(
+      Object.fromEntries(payload.sources.map((one) => [one.source_id, one.params])),
+    );
+  }, [seeded, setup.data]);
 
   // The live commentary. Unsubscribing on unmount matters: a user who wanders
   // off to another screen mid-search should not leave a socket behind.

@@ -10,10 +10,21 @@
  * The Python side writes those sentences for people ("jobs.xlsx is open in
  * Excel. Close it and run again"), so the interface shows them verbatim rather
  * than inventing a worse one.
+ *
+ * Sign-in errors are the exception, and carry a `code` as well. Those are the
+ * few messages somebody reads in a hurry, in their own language, while
+ * wondering whether they have just been locked out of their own laptop -- so
+ * the interface translates them and keeps the server's sentence as the
+ * fallback for any code it has not been taught.
+ *
+ * The session rides in an HttpOnly cookie, which is why nothing here handles
+ * one: the browser attaches it and no script, ours included, can read it.
  */
 
 import type {
+  Account,
   AppSettings,
+  AuthStatus,
   Board,
   ExportReport,
   HistoryStep,
@@ -23,6 +34,7 @@ import type {
   RunResults,
   RunSummary,
   SearchProfile,
+  SearchSetup,
   SheetLayout,
   SourceHealth,
   SourceManifest,
@@ -37,6 +49,12 @@ declare global {
 
 export const TOKEN_HEADER = 'X-JobSheet-Token';
 
+/** Saved searches, saved sheet designs, and the one setup the wizard writes. */
+export type ProfileKind = 'search' | 'layout' | 'setup';
+
+/** The name the wizard's setup is stored under, one per account. */
+export const DEFAULT_SETUP = 'default';
+
 export function sessionToken(): string {
   return window.__JOBSHEET__?.token ?? '';
 }
@@ -45,10 +63,23 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** Empty unless the server sent one; see the note at the top of this file. */
+    readonly code: string = '',
   ) {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+/** The short constant an auth failure carries, when it carries one. */
+function readCode(body: unknown): string {
+  if (body && typeof body === 'object' && 'detail' in body) {
+    const detail = (body as { detail: unknown }).detail;
+    if (detail && typeof detail === 'object' && !Array.isArray(detail) && 'code' in detail) {
+      return String((detail as { code: unknown }).code);
+    }
+  }
+  return '';
 }
 
 /** FastAPI puts the message in `detail`, which is sometimes a list of problems. */
@@ -57,6 +88,9 @@ function readDetail(body: unknown, fallback: string): string {
   if (body && typeof body === 'object' && 'detail' in body) {
     const detail = (body as { detail: unknown }).detail;
     if (typeof detail === 'string') return detail;
+    if (detail && typeof detail === 'object' && !Array.isArray(detail) && 'message' in detail) {
+      return String((detail as { message: unknown }).message);
+    }
     if (Array.isArray(detail)) {
       return detail
         .map((item) =>
@@ -92,6 +126,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(
       response.status,
       readDetail(body, `${response.status} ${response.statusText}`),
+      readCode(body),
     );
   }
 
@@ -130,6 +165,40 @@ const query = (params: Record<string, string | number | undefined>): string => {
 
 export const api = {
   settings: () => request<AppSettings>('/api/settings'),
+
+  // ---- who is here ------------------------------------------------------
+  auth: {
+    /** Safe before signing in: it is what decides which form to show. */
+    status: () => request<AuthStatus>('/api/auth/status'),
+    me: () => request<Account>('/api/auth/me'),
+    register: (username: string, password: string) =>
+      request<Account>('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      }),
+    /** Take over the data an install had before it had accounts. Once only. */
+    claim: (username: string, password: string) =>
+      request<Account>('/api/auth/claim', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      }),
+    login: (username: string, password: string) =>
+      request<Account>('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      }),
+    logout: () => request<{ signed_out: boolean }>('/api/auth/logout', { method: 'POST' }),
+    changePassword: (current: string, next: string) =>
+      request<{ changed: boolean }>('/api/auth/password', {
+        method: 'POST',
+        body: JSON.stringify({ current, new: next }),
+      }),
+    finishOnboarding: (setup: SearchSetup, workbook: string) =>
+      request<Account>('/api/auth/onboarding', {
+        method: 'POST',
+        body: JSON.stringify({ setup, workbook }),
+      }),
+  },
 
   // ---- sources ----------------------------------------------------------
   sources: () =>
@@ -216,17 +285,17 @@ export const api = {
     }>('/api/layouts/validate', { method: 'POST', body: JSON.stringify(layout) }),
 
   // ---- saved profiles ---------------------------------------------------
-  profiles: (kind: 'search' | 'layout') => request<string[]>(`/api/profiles/${kind}`),
-  loadProfile: <T>(kind: 'search' | 'layout', name: string) =>
+  profiles: (kind: ProfileKind) => request<string[]>(`/api/profiles/${kind}`),
+  loadProfile: <T>(kind: ProfileKind, name: string) =>
     request<{ name: string; payload: T }>(
       `/api/profiles/${kind}/${encodeURIComponent(name)}`,
     ),
-  saveProfile: (kind: 'search' | 'layout', name: string, payload: unknown) =>
+  saveProfile: (kind: ProfileKind, name: string, payload: unknown) =>
     request<{ name: string }>(`/api/profiles/${kind}/${encodeURIComponent(name)}`, {
       method: 'PUT',
       body: JSON.stringify({ payload }),
     }),
-  deleteProfile: (kind: 'search' | 'layout', name: string) =>
+  deleteProfile: (kind: ProfileKind, name: string) =>
     request<{ deleted: string }>(`/api/profiles/${kind}/${encodeURIComponent(name)}`, {
       method: 'DELETE',
     }),

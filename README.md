@@ -14,7 +14,7 @@ tracking systems and plain RSS feeds, then writes them into an Excel workbook
 *you* design — your columns, your names, your colours — without ever destroying
 the notes and ticks you added by hand.
 
-**No account. No API key. No data leaves your laptop.**
+**Nothing to sign up for. No API key. No data leaves your laptop.**
 
 </div>
 
@@ -79,10 +79,51 @@ placeholder page.
 
 ---
 
+## First run
+
+JobSheet asks for a username and a password the first time it opens, and then
+asks eight questions about the job you are after — what it is called, which
+words mean it, where you would work, how old an ad may be, what you would rather
+not see, where to look, and where the spreadsheet should live. Answer them and
+you land on the search screen with all of it already filled in.
+
+**The account is local and it is not a sign-up.** Nothing is registered
+anywhere, nothing is verified, no address is asked for. It exists because one
+install can hold several job searches that never see each other — a household
+sharing a laptop, or a machine you demonstrate the app on — and because a page
+in another browser tab should not be able to read your applications.
+
+Be clear about what it does and does not protect:
+
+| | |
+|---|---|
+| A web page you have open in another tab | **Cannot** reach your data. It cannot read the page JobSheet serves, so it cannot learn the session token, and the server refuses it. |
+| Another person using this computer, in a browser | **Cannot** see your search. They get their own, or they get the sign-in screen. |
+| Anyone with a shell on this computer | **Can** read everything. The database is an ordinary SQLite file and the command line opens it directly. A password cannot change that, and this one does not pretend to. |
+
+Upgrading an install that predates accounts loses nothing. Everything already
+there is held by an account with no password, which cannot be signed into — only
+*claimed*, once, from the sign-in screen. Your workbook stays exactly where it
+was.
+
+```bash
+jobsheet users                       # who is on this install
+jobsheet users add ivo               # asks for a password, without echo
+jobsheet --user ivo run remotive     # act as an account
+```
+
+`--user` may be left out whenever there is only one account, which is why a
+single-user install behaves exactly as it did before. The command line does not
+ask for the password: it reads the database file directly, so a prompt there
+would be asking for a secret it has no way to insist on.
+
+---
+
 ## What it does
 
 Five screens: pick sources and say what you want; read what came back **and
 why**; arrange the spreadsheet; track each application; see where your files are.
+A sixth, once: the wizard that fills the first of them in for you.
 
 The **sheet designer** is the centre of it — columns on the left, a live preview
 on the right drawn to look like the workbook it will produce, and a write button
@@ -96,6 +137,7 @@ jobsheet sources                              # what is installed
 jobsheet run remotive hzz --profile analyst   # search, save, write
 jobsheet export                               # rewrite the workbook
 jobsheet export csv --out jobs.csv            # or dump it elsewhere
+jobsheet users                                # accounts on this install
 ```
 
 ### Where your things live

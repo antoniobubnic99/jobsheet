@@ -191,6 +191,141 @@
     "pitchPlaceholder": "Onaj jedan odlomak o tebi koji se mijenja od posla do posla.",
     "copy": "Kopiraj zamolbu"
   },
+  "auth": {
+    "username": "Korisničko ime",
+    "usernameHint": "3-32 znaka. Slova, brojke, točke, crtice, donje crte.",
+    "password": "Lozinka",
+    "passwordHint": "Najmanje 8 znakova. Ništa drugo se ne traži.",
+    "working": "Samo malo…",
+    "signOut": "Odjava",
+    "localNote": "JobSheet radi na ovom računalu i ne javlja se nikome osim njemu. Lozinka razdvaja ljude koji dijele računalo -- nije račun ni na čijem poslužitelju i odavde ništa ne izlazi.",
+    "switchToRegister": "Napravi još jedan račun",
+    "switchToLogin": "Već imam račun",
+    "switchToClaim": "Preuzmi pretragu koja je već tu",
+    "switchToFresh": "Radije počni ispočetka",
+    "login": {
+      "title": "Prijava",
+      "lede": "Tvoje pretrage, tvoja tablica, tvoje bilješke.",
+      "action": "Prijavi me"
+    },
+    "register": {
+      "title": "Napravi svoj račun",
+      "lede": "Minuta pitanja, pa pretraga koja radi.",
+      "action": "Napravi"
+    },
+    "claim": {
+      "title": "Ova pretraga čeka tebe",
+      "lede": "U ovom JobSheetu ima oglasa, bilježaka i statusa iz vremena prije nego što je imao račune. Odaberi ime i lozinku i sve je tvoje.",
+      "action": "Preuzmi"
+    },
+    "errors": {
+      "bad_credentials": "To ime i ta lozinka ne idu zajedno.",
+      "username_taken": "To se ime već koristi na ovom računalu.",
+      "username_invalid": "Korisničko ime ima 3-32 znaka: prvo slovo ili brojka, pa slova, brojke, točke, crtice ili donje crte.",
+      "password_too_short": "Lozinka treba barem 8 znakova.",
+      "password_too_long": "Ta je lozinka predugačka.",
+      "password_is_username": "Lozinka ne može biti ista kao korisničko ime.",
+      "too_many_attempts": "Previše pokušaja. Pričekaj malo pa probaj ponovno.",
+      "nothing_to_claim": "Netko je tu pretragu već preuzeo.",
+      "already_claimed": "Taj račun već ima lozinku.",
+      "no_such_user": "Taj račun više ne postoji.",
+      "workbook_not_xlsx": "Radna knjiga mora biti .xlsx datoteka.",
+      "workbook_is_a_folder": "To je mapa, a ne datoteka.",
+      "workbook_folder_missing": "Na toj putanji nema mape."
+    },
+    "changePassword": "Promijeni lozinku",
+    "currentPassword": "Trenutna lozinka",
+    "newPassword": "Nova lozinka",
+    "passwordChanged": "Promijenjena. Svi prozori su odjavljeni, i ovaj.",
+    "account": "Račun",
+    "accountHint": "Prijavljen na ovom računalu. Tvoji redci, tvoja tablica."
+  },
+  "welcome": {
+    "greeting": "Dobrodošao, {{name}}.",
+    "back": "Natrag",
+    "next": "Dalje",
+    "finish": "Vodi me na pretragu",
+    "needSource": "Odaberi barem jedan izvor. Pretraga koja nema gdje tražiti ne nalazi ništa.",
+    "headline": {
+      "step": "Posao",
+      "title": "Kakav posao tražiš?",
+      "lede": "Svojim riječima. Po ovome se ne filtrira -- ovo je način na koji ti aplikacija govori o tvojoj pretrazi i kako počinje zamolba.",
+      "label": "Posao koji tražiš",
+      "hint": "Na primjer: geodet, kuhinjski pomoćnik, junior back-end programer.",
+      "placeholder": "Geodet"
+    },
+    "keywords": {
+      "step": "Riječi",
+      "title": "Koje riječi znače taj posao?",
+      "lede": "Oglasi ne pišu tvoj naziv, nego svoj. Grupiraj riječi koje znače isto i daj svakoj skupini ime -- to je kategorija koja završi u tablici. Skupine se provjeravaju redom, a prva koja se poklopi pobjeđuje."
+    },
+    "where": {
+      "step": "Gdje",
+      "title": "Gdje bi radio?",
+      "lede": "Ostavi sve prazno da traži svugdje -- to je češće dobar odgovor nego što ljudi misle.",
+      "locations": "Gradovi i mjesta",
+      "locationsHint": "Prazno znači bilo gdje. Filtriranje po mjestu se onda uopće ne radi.",
+      "regions": "Županije ili regije",
+      "regionsHint": "Za izvore koji navode županiju umjesto mjesta.",
+      "regionsPlaceholder": "Primorsko-goranska…",
+      "remote": "Riječi koje znače rad na daljinu",
+      "remoteHint": "Oglas koji sadrži nešto od ovoga računa se kao da je kod tebe."
+    },
+    "freshness": {
+      "step": "Starost",
+      "title": "Koliko star oglas smije biti?",
+      "lede": "Vrijedi samo za oglase bez vlastitog roka prijave. Oglas koji ima rok sudi se po roku.",
+      "label": "Preskoči oglase starije od",
+      "hint": "Trideset dana odgovara većini pretraga. Smanji ako gledaš svaki dan."
+    },
+    "no": {
+      "step": "Ne, hvala",
+      "title": "Što ne želiš vidjeti?",
+      "lede": "Sve je ovo neobavezno i sve se poslije može promijeniti.",
+      "employers": "Poslodavci koje preskačeš",
+      "employersHint": "Agencije kojih ti je dosta ili bivši poslodavac.",
+      "types": "Vrste ugovora koje preskačeš",
+      "typesHint": "Uspoređuje se kao obična riječ s onim što oglas piše.",
+      "allowlist": "…osim ako oglas kaže i",
+      "allowlistHint": "Ovo postoji zbog prave zamke: „na neodređeno\" sadrži „određeno\", pa blokada jednog blokira oba. Što god je ovdje, pobjeđuje popis iznad.",
+      "schedules": "Radna vremena koja preskačeš",
+      "schedulesHint": "Noćni rad, vikendi, prekinuto radno vrijeme -- što god ne dolazi u obzir."
+    },
+    "fine": {
+      "step": "Sitno",
+      "title": "Dva pravila za nezgodne slučajeve",
+      "lede": "Preskoči ako ti ništa od ovoga ne zvuči poznato. Ovo je za drugi mjesec traženja, kad ti isti krivi oglas stalno dolazi.",
+      "evidence": "Riječ u opisu nije dovoljna osim ako",
+      "evidenceHint": "Kad se poklopilo samo u tekstu oglasa, traži da polje o obrazovanju spominje nešto od ovoga. Prazno gasi pravilo.",
+      "flags": "Što vrijedi primijetiti",
+      "flagsHint": "Ovo nikad ne odbacuje oglas, samo ga označi -- uzorak ne zna razliku između tvrdog uvjeta i lijepe želje. Imenuj oznaku pa nabroji riječi koje je dižu."
+    },
+    "sources": {
+      "step": "Izvori",
+      "title": "Gdje neka JobSheet traži?",
+      "lede": "Svaki izvor ispod je javni feed ili javni API. Bez računa, bez ključa, ništa iza prijave. Odaberi koliko hoćeš -- dohvaćaju se istovremeno."
+    },
+    "workbook": {
+      "step": "Datoteka",
+      "title": "Gdje neka stoji tvoja tablica?",
+      "lede": "Ovo je datoteka koju ćeš stvarno otvarati. Stavi je tamo gdje gledaš -- radna površina je dobar odgovor.",
+      "label": "Radna knjiga",
+      "hint": "Ostavi prazno pa je JobSheet drži uz ostalo. Mora završavati na .xlsx, a mapa mora postojati."
+    },
+    "summary": {
+      "label": "Dakle, da bude jasno",
+      "looking": "Tražiš",
+      "terms": "Riječi",
+      "where": "Gdje",
+      "sources": "Izvori",
+      "freshness": "Svježina",
+      "anything": "bilo što",
+      "anywhere": "bilo gdje",
+      "days_one": "oglasi stari do {{count}} dan",
+      "days_few": "oglasi stari do {{count}} dana",
+      "days_other": "oglasi stari do {{count}} dana"
+    }
+  },
   "error": {
     "title": "Nešto je pošlo po zlu",
     "generic": "Ne mogu doći do JobSheeta."

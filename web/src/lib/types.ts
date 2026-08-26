@@ -133,6 +133,45 @@ export const EMPTY_PROFILE: SearchProfile = {
   flags: {},
 };
 
+/* -------------------------------------------------------------------- who */
+
+export interface Account {
+  id: number;
+  username: string;
+  onboarded: boolean;
+  /** False for an account holding data from before accounts: claimable, not signed-into. */
+  has_password: boolean;
+  workbook: string | null;
+  created_at: string;
+  /** Only on `/api/auth/me`: resolved paths, which the account row does not hold. */
+  workbook_path?: string;
+  home?: string;
+  primary?: boolean;
+}
+
+export interface AuthStatus {
+  accounts: number;
+  claimable: Account | null;
+}
+
+export interface SourceChoice {
+  source_id: string;
+  params: Record<string, unknown>;
+}
+
+/** What the wizard collected: what to look for, and where. Saved as one object. */
+export interface SearchSetup {
+  headline: string;
+  profile: SearchProfile;
+  sources: SourceChoice[];
+}
+
+export const EMPTY_SETUP: SearchSetup = {
+  headline: '',
+  profile: EMPTY_PROFILE,
+  sources: [],
+};
+
 export type RunPhase = 'running' | 'done' | 'failed' | 'cancelled';
 
 export interface RunSummary {

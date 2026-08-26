@@ -20,6 +20,7 @@ import SettingsScreen from './SettingsScreen';
 import SheetDesigner from './SheetDesigner';
 import TrackerScreen from './TrackerScreen';
 import Shell from '@/components/Shell';
+import { AccountProvider } from '@/lib/account';
 
 const LAYOUT = {
   sheet_name: 'Jobs',
@@ -164,6 +165,40 @@ const RESPONSES: Record<string, unknown> = {
   '/api/profiles/search': ['my search'],
   '/api/profiles/layout': ['my design'],
   '/api/sources/health': [],
+  '/api/auth/status': { accounts: 1, claimable: null },
+  '/api/auth/me': {
+    id: 1,
+    username: 'ana',
+    onboarded: true,
+    has_password: true,
+    workbook: null,
+    created_at: '2026-08-24T09:00:00',
+    workbook_path: 'C:/Users/x/AppData/Local/JobSheet/jobs.xlsx',
+    home: 'C:/Users/x/AppData/Local/JobSheet',
+    primary: true,
+  },
+  // What the wizard wrote. The search screen opens with this in it.
+  '/api/profiles/setup/default': {
+    name: 'default',
+    kind: 'setup',
+    payload: {
+      headline: 'Surveyor',
+      profile: {
+        keyword_groups: [{ name: 'GIS', terms: ['gis'] }],
+        locations: ['Rijeka'],
+        regions: [],
+        remote_terms: [],
+        max_age_days: 30,
+        excluded_employers: [],
+        excluded_employment_types: [],
+        excluded_schedules: [],
+        employment_type_allowlist: [],
+        description_match_requires: [],
+        flags: {},
+      },
+      sources: [{ source_id: 'hzz', params: {} }],
+    },
+  },
 };
 
 function answerFor(url: string): unknown {
@@ -180,7 +215,9 @@ function wrap(node: React.ReactNode) {
   });
   return (
     <QueryClientProvider client={client}>
-      <MemoryRouter>{node}</MemoryRouter>
+      <AccountProvider>
+        <MemoryRouter>{node}</MemoryRouter>
+      </AccountProvider>
     </QueryClientProvider>
   );
 }

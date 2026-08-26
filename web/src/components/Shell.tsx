@@ -10,8 +10,8 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
-import { useTheme } from '@/lib/useTheme';
-import { LANGUAGES, setLanguage, type LanguageCode } from '@/i18n';
+import { useAccount } from '@/lib/account';
+import LanguagePicker from '@/components/LanguagePicker';
 
 /**
  * Screens kept out of the rail.
@@ -40,8 +40,8 @@ const SCREENS = ALL_SCREENS.filter((screen) => !HIDDEN_FROM_RAIL.includes(screen
 );
 
 export default function Shell() {
-  const { t, i18n } = useTranslation();
-  const { theme, cycle } = useTheme();
+  const { t } = useTranslation();
+  const { account, signOut } = useAccount();
 
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[var(--rail-width)_1fr]">
@@ -109,35 +109,21 @@ export default function Shell() {
             ))}
           </ul>
 
-          <div className="rule-t hidden items-center justify-between px-[var(--gap-wide)] py-[var(--gap)] md:flex">
-            <div className="flex gap-[var(--gap-hair)]">
-              {LANGUAGES.map((language) => (
-                <button
-                  key={language.code}
-                  type="button"
-                  className="btn btn-bare mono text-[var(--text-micro)] uppercase"
-                  aria-pressed={i18n.language === language.code}
-                  style={{
-                    color:
-                      i18n.language === language.code ? 'var(--accent)' : 'var(--ink-faint)',
-                    fontWeight: i18n.language === language.code ? 700 : 500,
-                  }}
-                  onClick={() => setLanguage(language.code as LanguageCode)}
-                >
-                  {language.code}
-                </button>
-              ))}
-            </div>
+          {/* Whose search this is. Not decoration: one install can hold several,
+              and the only thing standing between "my applications" and
+              somebody else's is knowing which account is open. */}
+          <div className="rule-t hidden px-[var(--gap-wide)] py-[var(--gap)] md:block">
+            <p className="text-[var(--text-small)] font-semibold">{account?.username}</p>
             <button
               type="button"
-              className="btn btn-bare text-[var(--text-micro)]"
-              onClick={cycle}
-              aria-label={t('common.theme')}
-              title={t('common.theme')}
+              className="btn btn-bare px-0 text-[var(--text-micro)] text-[var(--ink-faint)]"
+              onClick={() => void signOut()}
             >
-              {theme === 'light' ? '☀' : theme === 'dark' ? '☾' : '◐'}
+              {t('auth.signOut')}
             </button>
           </div>
+
+          <LanguagePicker className="rule-t hidden px-[var(--gap-wide)] py-[var(--gap)] md:flex" />
         </div>
       </nav>
 
