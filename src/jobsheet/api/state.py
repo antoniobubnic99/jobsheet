@@ -93,6 +93,11 @@ class AppState:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings.prepare()
+        # Unscoped, both of them: they resolve to the only account there is, and
+        # raise on an install with several. Routers must never reach for these --
+        # they ask for `CurrentState` and get a `UserSession` whose `db` and
+        # `tracker` are narrowed. These two exist for the parts with no request
+        # behind them: start-up, and tests arranging a fixture.
         self.db = Database(self.settings.database_path)
         self.tracker = Tracker(self.db)
         self.http = HttpClient()
