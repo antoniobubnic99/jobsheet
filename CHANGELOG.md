@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   be omitted whenever there is only one account.
 - The first account keeps the original flat file layout; later ones get
   `home/users/<id>-<name>/`.
+- A front page in front of the sign-in form: what JobSheet does, what the
+  spreadsheet looks like, and the sources this install can actually reach —
+  named from the registry, so a source plugin appears there by installing it.
+  Two ways in from it, "find a job" and "sign in", and the one it offers first
+  follows the install.
 
 ### Changed
 

@@ -25,6 +25,7 @@ from jobsheet.api.state import SESSION_COOKIE, TOKEN_HEADER
 from jobsheet.config import Settings, user_folder
 from jobsheet.core.models import ApplicationStatus, Posting
 from jobsheet.sheet.row import JobRow
+from jobsheet.sources import registry
 from jobsheet.store.db import MIGRATIONS, Database
 from jobsheet.store.users import (
     LoginThrottle,
@@ -550,7 +551,20 @@ def register(client: TestClient, username: str = "ana", password: str = GOOD) ->
 class TestTheDoor:
     def test_a_fresh_install_reports_no_accounts(self, api: TestClient) -> None:
         body = api.get("/api/auth/status").json()
-        assert body == {"accounts": 0, "claimable": None}
+        assert body["accounts"] == 0
+        assert body["claimable"] is None
+
+    def test_the_door_says_where_jobsheet_can_look(self, api: TestClient) -> None:
+        """The front page names the sources, and it does so before signing in.
+
+        No exact count is asserted: half of this suite registers its own sources
+        in-process, so the number here is whatever the run happens to hold. What
+        must be true is that the door and the registry agree.
+        """
+        sources = api.get("/api/auth/status").json()["sources"]
+        assert sources["count"] == len(registry.manifests())
+        assert sources["names"] == [one.name for one in registry.manifests()]
+        assert all(isinstance(name, str) and name for name in sources["names"])
 
     def test_registering_signs_you_in(self, api: TestClient) -> None:
         response = register(api)

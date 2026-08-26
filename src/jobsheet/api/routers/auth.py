@@ -35,6 +35,7 @@ from jobsheet.api.state import (
 )
 from jobsheet.core.matching import fold
 from jobsheet.core.setup import DEFAULT_SETUP, SearchSetup
+from jobsheet.sources import registry
 from jobsheet.store.users import SESSION_DAYS, User, UserError
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -110,15 +111,23 @@ def _sign_in(state: TokenOnly, response: Response, user: User) -> dict[str, Any]
 
 @router.get("/status")
 def read_status(state: TokenOnly) -> dict[str, Any]:
-    """What the sign-in screen needs to know before anybody has typed anything.
+    """What the front page and the sign-in form need before anybody has typed.
 
-    Whether to offer registration or a sign-in form, and whether this install is
-    holding data from before accounts that is waiting to be claimed.
+    Whether to offer registration or a sign-in form, whether this install is
+    holding data from before accounts that is waiting to be claimed, and what
+    JobSheet can actually search -- the front page promises that out loud, and
+    `/api/sources` cannot answer it, because that route is scoped to an account
+    and tells a visitor 401.
+
+    Names only. The full manifest is a form definition, and the door has no
+    form to draw; a name is what a person outside recognises.
     """
     claimable = state.users.claimable()
+    manifests = registry.manifests()
     return {
         "accounts": state.users.count(),
         "claimable": _user_json(claimable) if claimable else None,
+        "sources": {"count": len(manifests), "names": [one.name for one in manifests]},
     }
 
 

@@ -197,6 +197,7 @@
     "password": "Lozinka",
     "passwordHint": "Najmanje 8 znakova. Ništa drugo se ne traži.",
     "working": "Samo malo…",
+    "back": "Natrag",
     "signOut": "Odjava",
     "localNote": "JobSheet radi na ovom računalu i ne javlja se nikome osim njemu. Lozinka razdvaja ljude koji dijele računalo -- nije račun ni na čijem poslužitelju i odavde ništa ne izlazi.",
     "switchToRegister": "Napravi još jedan račun",
@@ -325,6 +326,86 @@
       "days_few": "oglasi stari do {{count}} dana",
       "days_other": "oglasi stari do {{count}} dana"
     }
+  },
+  "landing": {
+    "eyebrow": "Radi na tvom računalu",
+    "headline": "Svaki oglas koji nađeš, u jednoj tablici koja je tvoja.",
+    "lede": "JobSheet pregleda izvore koje odabereš, izbaci ono što već imaš, a ostalo upiše u .xlsx s tvojim stupcima. Kvačice i bilješke ostaju tvoje -- i ostaju na pravom poslu kad iduća pretraga presloži tablicu.",
+    "start": "Pronađi posao",
+    "startClaim": "Preuzmi pretragu koja je tu",
+    "signIn": "Prijavi se",
+    "privacy": "Nema računa ni na čijem poslužitelju. S ovog računala ništa ne izlazi.",
+    "claimNote": "Na ovom računalu već postoji pretraga, iz vremena prije nego što je JobSheet imao račune. Preuzmi je i sve u njoj ostaje kako jest.",
+    "sample": {
+      "label": "Otprilike ovo ti dođe na stol",
+      "position": "Radno mjesto",
+      "company": "Poslodavac",
+      "place": "Mjesto",
+      "applied": "Prijavljeno",
+      "one": {
+        "position": "Geodet",
+        "company": "Geodetski zavod",
+        "place": "Rijeka"
+      },
+      "two": {
+        "position": "GIS analitičar",
+        "company": "Grad Rijeka",
+        "place": "Zagreb"
+      },
+      "three": {
+        "position": "Geodetski tehničar",
+        "company": "Vodovod",
+        "place": "Krk"
+      }
+    },
+    "how": {
+      "label": "Kako to ide",
+      "one": {
+        "title": "Reci što tražiš",
+        "body": "Minuta pitanja: koji posao, koje riječi ga znače, gdje bi radio i što više ne želiš vidjeti."
+      },
+      "two": {
+        "title": "Gleda svugdje odjednom",
+        "body": "Javni feedovi i javni API-ji, dohvaćeni zajedno. Isti posao objavljen na tri mjesta je jedan redak, a oglas koji već imaš se ne vraća."
+      },
+      "three": {
+        "title": "Dobiješ tablicu",
+        "body": "Pravi .xlsx sa stupcima koje si izabrao. Stavi kvačicu u Excelu, pretraži ponovno i kvačica je i dalje na tom poslu kad se tablica presloži."
+      }
+    },
+    "what": {
+      "label": "Što dobiješ",
+      "sheet": {
+        "title": "Datoteku koja je tvoja",
+        "body": "Obični .xlsx, na tvom disku. Ne treba prijava da bi se otvorio, nema se što produžavati i otvara se u onome što ionako koristiš."
+      },
+      "tracker": {
+        "title": "Mjesto gdje se prati",
+        "body": "Novo, prijavljeno, razgovor, ponuda, odbijeno -- ploča koja odgovara gdje je koja prijava."
+      },
+      "letter": {
+        "title": "Zamolbu za početak",
+        "body": "Nacrt zamolbe iz samog oglasa i iz onoga što si rekao da tražiš. Tvoje je da je prepišeš."
+      },
+      "local": {
+        "title": "Ništa ne izlazi",
+        "body": "Tvoje pretrage, bilješke i datoteka ostaju na ovom računalu. Iza ovoga nema oblaka ni ključa koji se plaća."
+      }
+    },
+    "sources": {
+      "label": "Gdje gleda",
+      "hint": "Svaki od ovih je javni feed ili javni API. Bez računa, bez ključa, ništa iza prijave -- a novi izvor je dodatak, ne nova verzija JobSheeta.",
+      "count_one": "{{count}} izvor",
+      "count_few": "{{count}} izvora",
+      "count_other": "{{count}} izvora",
+      "unknown": "Popis je na ekranu izvora, kad uđeš."
+    },
+    "closing": {
+      "title": "Kad budeš spreman.",
+      "body": "Pitanja traju minutu, a svaki odgovor se poslije može promijeniti."
+    },
+    "repo": "Izvorni kod",
+    "version": "Verzija {{version}}"
   },
   "error": {
     "title": "Nešto je pošlo po zlu",

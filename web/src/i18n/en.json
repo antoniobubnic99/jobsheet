@@ -195,6 +195,7 @@
     "password": "Password",
     "passwordHint": "At least 8 characters. Nothing else is required of it.",
     "working": "One moment…",
+    "back": "Back",
     "signOut": "Sign out",
     "localNote": "JobSheet runs on this computer and answers nothing but this computer. The password keeps the people who share the machine apart -- it is not an account on anybody's server, and nothing leaves here.",
     "switchToRegister": "Make another account",
@@ -322,6 +323,85 @@
       "days_one": "ads up to {{count}} day old",
       "days_other": "ads up to {{count}} days old"
     }
+  },
+  "landing": {
+    "eyebrow": "Runs on your computer",
+    "headline": "Every ad you find, in one spreadsheet you own.",
+    "lede": "JobSheet checks the sources you pick, drops what you already have, and writes the rest into an .xlsx with your columns. Your ticks and your notes stay yours -- and stay on the right job when the next search re-sorts the sheet.",
+    "start": "Find a job",
+    "startClaim": "Take over the search that is here",
+    "signIn": "Sign in",
+    "privacy": "No account on anybody's server. Nothing leaves this computer.",
+    "claimNote": "There is already a search on this computer, from before JobSheet had accounts. Take it over and everything in it stays where it is.",
+    "sample": {
+      "label": "Roughly what lands on your desk",
+      "position": "Position",
+      "company": "Company",
+      "place": "Place",
+      "applied": "Applied",
+      "one": {
+        "position": "Surveyor",
+        "company": "Geodetski zavod",
+        "place": "Rijeka"
+      },
+      "two": {
+        "position": "GIS analyst",
+        "company": "City of Rijeka",
+        "place": "Zagreb"
+      },
+      "three": {
+        "position": "Land surveyor",
+        "company": "Vodovod",
+        "place": "Krk"
+      }
+    },
+    "how": {
+      "label": "How it works",
+      "one": {
+        "title": "Say what you are after",
+        "body": "A minute of questions: the job, the words that mean it, where you would work, and what you would rather not see again."
+      },
+      "two": {
+        "title": "It looks everywhere at once",
+        "body": "Public feeds and public APIs, fetched together. The same job posted in three places is one row, and an ad you already have does not come back."
+      },
+      "three": {
+        "title": "You get a spreadsheet",
+        "body": "A real .xlsx with the columns you chose. Tick a row in Excel, search again, and the tick is still on that job after the sheet re-sorts."
+      }
+    },
+    "what": {
+      "label": "What you get",
+      "sheet": {
+        "title": "A file you own",
+        "body": "Plain .xlsx, on your disk. No login to read it, nothing to renew, and it opens in whatever you already use."
+      },
+      "tracker": {
+        "title": "Somewhere to keep track",
+        "body": "New, applied, interview, offer, rejected -- a board that answers where each application stands."
+      },
+      "letter": {
+        "title": "A letter to start from",
+        "body": "A cover letter drafted from the ad and from what you said you are after. Yours to rewrite."
+      },
+      "local": {
+        "title": "Nothing leaves",
+        "body": "Your searches, your notes and your file stay on this computer. There is no cloud behind this and no key to buy."
+      }
+    },
+    "sources": {
+      "label": "Where it looks",
+      "hint": "Every one of these is a public feed or a public API. No account, no key, nothing behind a login -- and a new one is a plugin, not a new version of JobSheet.",
+      "count_one": "{{count}} source",
+      "count_other": "{{count}} sources",
+      "unknown": "The list is on the sources screen, once you are inside."
+    },
+    "closing": {
+      "title": "Ready when you are.",
+      "body": "The questions take a minute, and every answer can be changed afterwards."
+    },
+    "repo": "Source code",
+    "version": "Version {{version}}"
   },
   "error": {
     "title": "Something went wrong",

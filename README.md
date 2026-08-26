@@ -81,8 +81,12 @@ placeholder page.
 
 ## First run
 
-JobSheet asks for a username and a password the first time it opens, and then
-asks eight questions about the job you are after — what it is called, which
+JobSheet opens on a front page that says what it does, what comes out of it and
+which sources it can reach on this install. Two buttons lead off it: one starts a
+new search, one signs an existing account back in.
+
+Starting a new search asks for a username and a password, and then asks eight
+questions about the job you are after — what it is called, which
 words mean it, where you would work, how old an ad may be, what you would rather
 not see, where to look, and where the spreadsheet should live. Answer them and
 you land on the search screen with all of it already filled in.

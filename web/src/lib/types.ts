@@ -152,6 +152,14 @@ export interface Account {
 export interface AuthStatus {
   accounts: number;
   claimable: Account | null;
+  /**
+   * What the front page can promise before anybody has signed in.
+   *
+   * It comes from the door rather than from `/api/sources` because that route
+   * is scoped to an account and answers a visitor with a 401 -- and a front
+   * page that cannot name a single source is not saying much.
+   */
+  sources: { count: number; names: string[] };
 }
 
 export interface SourceChoice {

@@ -1,7 +1,8 @@
 /**
  * Which of the three faces of JobSheet you are looking at.
  *
- * Signed out, you get the door. Signed in but never through the wizard, you get
+ * Signed out, you get the front door -- the page that says what this is, and
+ * the sign-in form behind it. Signed in but never through the wizard, you get
  * the wizard. Otherwise you get the app. That is the whole decision, and it is
  * made in one place so no screen has to defend itself.
  *
@@ -16,24 +17,15 @@ import { useTranslation } from 'react-i18next';
 
 import { useAccount } from '@/lib/account';
 import Shell from '@/components/Shell';
-import { Problem } from '@/components/primitives';
-import SignInScreen from '@/screens/SignInScreen';
+import { Problem, Waiting } from '@/components/primitives';
+import FrontDoor from '@/screens/FrontDoor';
 import WelcomeScreen from '@/screens/WelcomeScreen';
 
 export default function Gate() {
   const { t } = useTranslation();
   const { account, loading, unreachable, retry } = useAccount();
 
-  if (loading) {
-    // Deliberately almost nothing. The answer comes from a process on this
-    // machine, so this is on screen for a few milliseconds, and a spinner that
-    // flashes is worse than a word that does not.
-    return (
-      <div className="grid min-h-dvh place-items-center bg-[var(--ground-sunk)]">
-        <p className="text-[var(--text-small)] text-[var(--ink-faint)]">{t('common.loading')}</p>
-      </div>
-    );
-  }
+  if (loading) return <Waiting />;
 
   if (unreachable) {
     return (
@@ -43,7 +35,7 @@ export default function Gate() {
     );
   }
 
-  if (!account) return <SignInScreen />;
+  if (!account) return <FrontDoor />;
   if (!account.onboarded) return <WelcomeScreen />;
   return <Shell />;
 }

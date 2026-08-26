@@ -1,10 +1,14 @@
 /**
- * The door and the hallway.
+ * The front page, the door and the hallway.
  *
  * `Gate` is three lines of logic guarding every screen in the app, which makes
  * it the single place where a mistake is worst: too strict and nobody gets in,
  * too loose and a signed-out browser sees somebody's job search. So each of its
  * three answers is tested against a server that gives the matching reply.
+ *
+ * The front page is tested for the two things it can get wrong in a way nobody
+ * would notice: offering a sign-in on an install with no accounts, and opening
+ * a different form from the one its button promised.
  *
  * The wizard is tested for the one thing it promises -- that finishing produces
  * a search which can actually run -- and for the one thing it refuses.
@@ -99,6 +103,20 @@ function mount() {
 
 const SIGNED_OUT: Reply = { status: 401, body: { detail: 'Sign in to JobSheet to use this.' } };
 
+/** What the door tells a visitor. `sources` is what the front page promises. */
+const DOOR = { count: 2, names: ['HZZ Burza rada', 'Remotive'] };
+
+/**
+ * The front page comes first now, so most of these tests start by leaving it.
+ *
+ * The first match, deliberately: the front page offers its main action twice,
+ * at the top and at the bottom, which is what a page you scroll should do.
+ */
+async function step(name: string | RegExp) {
+  const buttons = await screen.findAllByRole('button', { name });
+  await userEvent.click(buttons[0]!);
+}
+
 beforeEach(async () => {
   await i18n.changeLanguage('en');
 });
@@ -108,15 +126,19 @@ afterEach(() => {
 });
 
 describe('the gate', () => {
-  it('shows the door to a browser that is not signed in', async () => {
+  it('shows the front page to a browser that is not signed in', async () => {
     serve({
       '/api/auth/me': SIGNED_OUT,
-      '/api/auth/status': { body: { accounts: 1, claimable: null } },
+      '/api/auth/status': { body: { accounts: 1, claimable: null, sources: DOOR } },
     });
     mount();
 
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: /one spreadsheet you own/i }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    // The form is behind a click, not on the page.
+    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
   });
 
   it('shows the wizard to an account that has not been through it', async () => {
@@ -142,12 +164,63 @@ describe('the gate', () => {
   it('does not treat being signed out as an error', async () => {
     serve({
       '/api/auth/me': SIGNED_OUT,
-      '/api/auth/status': { body: { accounts: 1, claimable: null } },
+      '/api/auth/status': { body: { accounts: 1, claimable: null, sources: DOOR } },
     });
     mount();
 
-    await screen.findByRole('heading', { name: 'Sign in' });
+    await screen.findByRole('heading', { name: /one spreadsheet you own/i });
     expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
+  });
+});
+
+describe('the front page', () => {
+  const signedOut = (extra: Record<string, Reply> = {}) =>
+    serve({
+      '/api/auth/me': SIGNED_OUT,
+      '/api/auth/status': { body: { accounts: 1, claimable: null, sources: DOOR } },
+      ...extra,
+    });
+
+  it('names the sources this install actually has', async () => {
+    signedOut();
+    mount();
+
+    expect(await screen.findByText('2 sources')).toBeInTheDocument();
+    expect(screen.getByText('HZZ Burza rada')).toBeInTheDocument();
+    expect(screen.getByText('Remotive')).toBeInTheDocument();
+  });
+
+  it('promises no sources when the door could not say', async () => {
+    // A page that invented a number here would be lying on the one screen
+    // whose whole job is to be believed.
+    signedOut({ '/api/auth/status': { status: 500, body: { detail: 'no' } } });
+    mount();
+
+    expect(
+      await screen.findByText('The list is on the sources screen, once you are inside.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/sources$/)).not.toBeInTheDocument();
+  });
+
+  it('opens the form its button promised, not the other one', async () => {
+    signedOut();
+    mount();
+
+    await step('Find a job');
+    expect(await screen.findByRole('heading', { name: 'Make your account' })).toBeInTheDocument();
+  });
+
+  it('comes back when the form is left', async () => {
+    signedOut();
+    mount();
+
+    await step('Sign in');
+    await screen.findByRole('heading', { name: 'Sign in' });
+
+    await step('Back');
+    expect(
+      await screen.findByRole('heading', { name: /one spreadsheet you own/i }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -155,12 +228,17 @@ describe('the door', () => {
   it('offers to make an account when there are none', async () => {
     serve({
       '/api/auth/me': SIGNED_OUT,
-      '/api/auth/status': { body: { accounts: 0, claimable: null } },
+      '/api/auth/status': { body: { accounts: 0, claimable: null, sources: DOOR } },
     });
     mount();
 
+    // Nothing to sign into, so the front page does not offer it...
+    await screen.findAllByRole('button', { name: 'Find a job' });
+    expect(screen.queryByRole('button', { name: 'Sign in' })).not.toBeInTheDocument();
+
+    await step('Find a job');
     expect(await screen.findByRole('heading', { name: 'Make your account' })).toBeInTheDocument();
-    // Nothing to sign into, so nothing offers to.
+    // ...and neither does the form it opened.
     expect(screen.queryByText('I already have an account')).not.toBeInTheDocument();
   });
 
@@ -168,11 +246,17 @@ describe('the door', () => {
     serve({
       '/api/auth/me': SIGNED_OUT,
       '/api/auth/status': {
-        body: { accounts: 1, claimable: { ...ACCOUNT, username: 'local', has_password: false } },
+        body: {
+          accounts: 1,
+          claimable: { ...ACCOUNT, username: 'local', has_password: false },
+          sources: DOOR,
+        },
       },
     });
     mount();
 
+    // The front page says so in its own words before the form repeats it.
+    await step('Take over the search that is here');
     expect(
       await screen.findByRole('heading', { name: 'This search is waiting for you' }),
     ).toBeInTheDocument();
@@ -182,13 +266,14 @@ describe('the door', () => {
   it('translates a failure the server gave a code for', async () => {
     serve({
       '/api/auth/me': SIGNED_OUT,
-      '/api/auth/status': { body: { accounts: 1, claimable: null } },
+      '/api/auth/status': { body: { accounts: 1, claimable: null, sources: DOOR } },
       'POST /api/auth/login': {
         status: 401,
         body: { detail: { code: 'bad_credentials', message: 'server wording' } },
       },
     });
     mount();
+    await step('Sign in');
     await screen.findByRole('heading', { name: 'Sign in' });
 
     await userEvent.type(screen.getByLabelText('Username'), 'ana');
@@ -203,13 +288,14 @@ describe('the door', () => {
   it('falls back to the server sentence for a code it has never heard of', async () => {
     serve({
       '/api/auth/me': SIGNED_OUT,
-      '/api/auth/status': { body: { accounts: 1, claimable: null } },
+      '/api/auth/status': { body: { accounts: 1, claimable: null, sources: DOOR } },
       'POST /api/auth/login': {
         status: 422,
         body: { detail: { code: 'something_new', message: 'A brand new problem.' } },
       },
     });
     mount();
+    await step('Sign in');
     await screen.findByRole('heading', { name: 'Sign in' });
 
     await userEvent.type(screen.getByLabelText('Username'), 'ana');
@@ -222,11 +308,12 @@ describe('the door', () => {
   it('signing in swaps the door for the app', async () => {
     serve({
       '/api/auth/me': SIGNED_OUT,
-      '/api/auth/status': { body: { accounts: 1, claimable: null } },
+      '/api/auth/status': { body: { accounts: 1, claimable: null, sources: DOOR } },
       'POST /api/auth/login': { body: ACCOUNT },
       '/api/sources': { body: SOURCES },
     });
     mount();
+    await step('Sign in');
     await screen.findByRole('heading', { name: 'Sign in' });
 
     await userEvent.type(screen.getByLabelText('Username'), 'ana');

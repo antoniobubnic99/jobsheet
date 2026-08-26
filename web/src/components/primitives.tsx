@@ -224,6 +224,27 @@ export function Empty({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * The whole page, while a question about this machine is in flight.
+ *
+ * Deliberately almost nothing. The answer comes from a process on this
+ * computer, so this is on screen for a few milliseconds, and a spinner that
+ * flashes is worse than a word that does not.
+ *
+ * It is a whole screen rather than a line because of what it prevents: a screen
+ * drawn from a half-answer has to guess, and the guess is visible. The front
+ * page would offer a sign-in on an install with no accounts and then take it
+ * away again -- for long enough to be clicked.
+ */
+export function Waiting() {
+  const { t } = useTranslation();
+  return (
+    <div className="grid min-h-dvh place-items-center bg-[var(--ground-sunk)]">
+      <p className="text-[var(--text-small)] text-[var(--ink-faint)]">{t('common.loading')}</p>
+    </div>
+  );
+}
+
 export function Loading() {
   const { t } = useTranslation();
   return (
