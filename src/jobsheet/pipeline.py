@@ -140,7 +140,6 @@ def _step_all(
     report: RunReport,
     phase: str,
     *,
-    per_source: dict[str, int] | None = None,
     done: int = 0,
     total: int = 0,
 ) -> None:
@@ -152,10 +151,8 @@ def _step_all(
     would tell the user it finished.
     """
     for request in requests:
-        if request.source_id in report.errors:
-            continue
-        count = (per_source or {}).get(request.source_id, total)
-        ctx.step(request.source_id, phase, done, count)
+        if request.source_id not in report.errors:
+            ctx.step(request.source_id, phase, done, total)
 
 
 async def run_search(
@@ -270,7 +267,15 @@ async def run_search(
             if _enricher(posting) is not None:
                 source_id = posting.source_id
                 total_per_source[source_id] = total_per_source.get(source_id, 0) + 1
-        _step_all(ctx, requests, report, Phase.DETAILS, per_source=total_per_source, done=0)
+
+        # Only sources with detail pages to open enter this phase. A source
+        # without any would otherwise be announced as "checking details" while
+        # having none to check, and sit at 100% until the run ended.
+        for request in requests:
+            if request.source_id in report.errors:
+                continue
+            if waiting := total_per_source.get(request.source_id, 0):
+                ctx.step(request.source_id, Phase.DETAILS, 0, waiting)
 
         for posting, hit in candidates:
             source_cls = _enricher(posting)

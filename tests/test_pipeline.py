@@ -398,3 +398,25 @@ class TestProgressPerSource:
 
     def test_a_failure_freezes_the_bar_where_it_got_to(self) -> None:
         assert percent_for(Phase.FAILED, 0, 0, previous=37) == 37
+
+    async def test_a_source_with_no_detail_pages_skips_that_phase(self) -> None:
+        """Otherwise its bar reads 100% under the label "checking details" --
+        which is both premature and untrue, since it has none to check."""
+        steps: list[tuple[str, str, int, int]] = []
+        FakeSource.postings = [ad(1)]
+        await search(on_step=lambda *args: steps.append(args))
+
+        assert Phase.DETAILS not in {phase for _, phase, _, _ in steps}
+        assert [phase for _, phase, _, _ in steps][-1] == Phase.DONE
+
+    async def test_a_source_with_detail_pages_reports_them_one_by_one(self) -> None:
+        steps: list[tuple[str, str, int, int]] = []
+        EnrichingSource.postings = [ad(n, source_id="enriching") for n in (1, 2, 3)]
+        await run_search(
+            [SourceRequest("enriching")],
+            GIS,
+            today=TODAY,
+            on_step=lambda *args: steps.append(args),
+        )
+        details = [(done, total) for _, phase, done, total in steps if phase == Phase.DETAILS]
+        assert details == [(0, 3), (1, 3), (2, 3), (3, 3)]
