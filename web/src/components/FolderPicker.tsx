@@ -42,6 +42,14 @@ export default function FolderPicker({
   const here = listing.data?.path ?? value;
   const showing = typed === value ? here : typed;
 
+  /* Read once, defaulted once. Two of the three places this was used already
+     defaulted and the third did not, which is exactly the asymmetry that ends
+     in a blank screen: an answer without a `folders` key -- a proxy, a partial
+     body, a server one version ahead -- threw on `.length` and took the whole
+     page down with it. The type says the key is always there; the type is a
+     claim about the server, not a guarantee about the wire. */
+  const folders = listing.data?.folders ?? [];
+
   const go = (folder: string) => {
     setTyped(folder);
     onChange(folder);
@@ -95,7 +103,7 @@ export default function FolderPicker({
       </label>
 
       <ul className="max-h-[11rem] overflow-y-auto">
-        {(listing.data?.folders ?? []).map((folder) => (
+        {folders.map((folder) => (
           <li key={folder.path}>
             <button
               type="button"
@@ -106,7 +114,7 @@ export default function FolderPicker({
             </button>
           </li>
         ))}
-        {listing.data && listing.data.folders.length === 0 ? (
+        {listing.data && folders.length === 0 ? (
           <li className="px-[var(--gap-tight)] py-[var(--gap-hair)] text-[var(--text-micro)] text-[var(--ink-faint)]">
             {listing.data.message || t('settings.folderEmpty')}
           </li>

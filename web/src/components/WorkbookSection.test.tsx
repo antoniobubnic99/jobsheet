@@ -145,6 +145,25 @@ describe('the workbook path', () => {
     expect(saved()[0]!.body.path).toBe('C:\\JobSheet\\poslovi.xlsx');
   });
 
+  it('survives a folder listing that arrives without a folder list', async () => {
+    /** Found by the wizard's tests, where the stand-in server answers `{}` to
+        anything it was not told about. The type promises a `folders` key; the
+        wire does not, and reading `.length` off nothing took the page down. */
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+        ),
+      ),
+    );
+    mount();
+
+    await userEvent.click(screen.getByRole('button', { name: /Change where it is/ }));
+
+    expect(await screen.findByLabelText('File name')).toBeInTheDocument();
+  });
+
   it('says what happens to the old workbook when the move is turned off', async () => {
     serve();
     mount();
