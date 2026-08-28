@@ -21,7 +21,6 @@ What the endpoints deliberately do *not* say:
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Cookie, HTTPException, Response, status
@@ -31,16 +30,14 @@ from jobsheet.api.state import (
     SESSION_COOKIE,
     CurrentState,
     TokenOnly,
-    UserSession,
 )
+from jobsheet.api.workbooks import validate_workbook
 from jobsheet.core.matching import fold
 from jobsheet.core.setup import DEFAULT_SETUP, SearchSetup
 from jobsheet.sources import registry
 from jobsheet.store.users import SESSION_DAYS, User, UserError
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-
-WORKBOOK_SUFFIX = ".xlsx"
 
 
 class Credentials(BaseModel):
@@ -244,36 +241,6 @@ def change_password(body: PasswordChange, state: CurrentState) -> dict[str, Any]
 # ------------------------------------------------------------------ the room
 
 
-def _workbook_for(session: UserSession, wanted: str) -> str | None:
-    """Validate a workbook path the wizard offered, or fall back to the default."""
-    if not wanted.strip():
-        return None
-
-    path = Path(wanted).expanduser()
-    if path.suffix.lower() != WORKBOOK_SUFFIX:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            {
-                "code": "workbook_not_xlsx",
-                "message": f"A workbook has to end in {WORKBOOK_SUFFIX}.",
-            },
-        )
-    if path.is_dir():
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            {"code": "workbook_is_a_folder", "message": f"{path} is a folder."},
-        )
-    if not path.parent.exists():
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            {
-                "code": "workbook_folder_missing",
-                "message": f"There is no folder at {path.parent}.",
-            },
-        )
-    return str(path)
-
-
 @router.post("/onboarding")
 def finish_onboarding(body: Onboarding, state: CurrentState) -> dict[str, Any]:
     """Store what the wizard collected and let the account into the app.
@@ -282,7 +249,7 @@ def finish_onboarding(body: Onboarding, state: CurrentState) -> dict[str, Any]:
     other way round would, if the write failed, leave somebody looking at an
     empty search screen with no wizard left to run.
     """
-    workbook = _workbook_for(state, body.workbook)
+    workbook = validate_workbook(body.workbook)
     state.db.save_profile(DEFAULT_SETUP, "setup", body.setup.model_dump(mode="json"))
     state.users.set_workbook(state.user.id, workbook)
     state.users.mark_onboarded(state.user.id)

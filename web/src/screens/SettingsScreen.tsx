@@ -1,21 +1,27 @@
 /**
- * 05 — Settings.
+ * Settings.
  *
  * Mostly a statement of where things are. That is deliberate: the promise the
  * app makes is that everything lives in files on this machine, and a settings
  * screen that shows the actual paths is how that promise is kept in view rather
  * than merely claimed in a README.
+ *
+ * One of those paths is not merely shown. The workbook is the file the user
+ * actually opens, and until it could be moved from here the wizard's first
+ * guess was permanent -- see `WorkbookSection`.
  */
 
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
+import { screenNumber } from '@/lib/screens';
 import { formatWhen } from '@/lib/format';
 import { LANGUAGES, setLanguage, type LanguageCode } from '@/i18n';
 import { useTheme, type Theme } from '@/lib/useTheme';
 import { Loading, Note, Problem, ScreenHeader, Section } from '@/components/primitives';
 import AccountSection from '@/components/AccountSection';
+import WorkbookSection from '@/components/WorkbookSection';
 
 const THEMES: Theme[] = ['system', 'light', 'dark'];
 
@@ -49,21 +55,15 @@ export default function SettingsScreen() {
 
   return (
     <>
-      <ScreenHeader number="05" title={t('settings.title')} lede={t('settings.lede')} />
+      <ScreenHeader
+        number={screenNumber('settings')}
+        title={t('settings.title')}
+        lede={t('settings.lede')}
+      />
 
       <Section label={t('settings.whereTitle')}>
         <dl className="panel px-[var(--gap-wide)] py-[var(--gap-tight)]">
           <Fact label={t('settings.home')} value={data.home} />
-          <Fact
-            label={t('settings.workbook')}
-            value={`${data.workbook}  ·  ${
-              data.workbook_locked
-                ? t('settings.workbookLocked')
-                : data.workbook_exists
-                  ? t('settings.workbookReady')
-                  : t('settings.workbookMissing')
-            }`}
-          />
           <Fact label={t('settings.database')} value={data.database} />
           <Fact label={t('settings.backups')} value={data.backups} />
           <Fact
@@ -73,6 +73,8 @@ export default function SettingsScreen() {
           />
         </dl>
       </Section>
+
+      <WorkbookSection settings={data} />
 
       <AccountSection />
 

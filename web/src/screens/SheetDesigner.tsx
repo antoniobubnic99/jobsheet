@@ -1,5 +1,5 @@
 /**
- * 03 — Sheet designer.
+ * Sheet designer, reached from a link rather than from the rail.
  *
  * The reason the project exists. Columns on the left, a live preview on the
  * right, and a write button that reads the workbook before it touches it.
@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import type { ExportReport, SheetLayout } from '@/lib/types';
 import { keyFromLabel } from '@/lib/format';
+import { screenNumber } from '@/lib/screens';
 import {
   Loading,
   Note,
@@ -108,7 +109,7 @@ export default function SheetDesigner() {
   return (
     <>
       <ScreenHeader
-        number="03"
+        number={screenNumber('designer')}
         title={t('designer.title')}
         lede={t('designer.lede')}
         aside={

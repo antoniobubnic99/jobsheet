@@ -27,16 +27,22 @@ from jobsheet.store.db import Database
 
 __all__ = ["BOARD_ORDER", "StatusChange", "Tracker", "merge_from_sheet"]
 
-# Left to right on the board. `SKIPPED` sits at the end rather than beside
-# `REJECTED` because "I decided against it" is a different story from "they
-# decided against me", and conflating them loses information the user cares about.
+# Left to right on the board, and the board reads as a story told in that
+# direction: the ones you threw out, the ones you have not looked at, then how
+# far each of the rest got.
+#
+# `SKIPPED` leads because it is where most cards go and where nobody wants to
+# look -- first column, off to the side, out of the way of the four that matter.
+# It stays at the opposite end from `REJECTED` because "I decided against it" is
+# a different story from "they decided against me", and a board that files them
+# together loses something the person looking at it cares about.
 BOARD_ORDER: tuple[ApplicationStatus, ...] = (
+    ApplicationStatus.SKIPPED,
     ApplicationStatus.NEW,
     ApplicationStatus.APPLIED,
     ApplicationStatus.INTERVIEW,
     ApplicationStatus.OFFER,
     ApplicationStatus.REJECTED,
-    ApplicationStatus.SKIPPED,
 )
 
 

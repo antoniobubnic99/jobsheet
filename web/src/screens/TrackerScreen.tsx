@@ -1,17 +1,38 @@
 /**
- * 04 — Tracker.
+ * The tracker.
  *
- * A board, with one design decision worth naming: `Skipped` sits at the far end
- * rather than beside `Rejected`. "I decided against it" and "they decided
+ * A board, with one design decision worth naming: `Discarded` is the first
+ * column and `Rejected` the last. "I decided against it" and "they decided
  * against me" are different stories, and a board that files them together loses
- * something the person looking at it cares about.
+ * something the person looking at it cares about. Discarded leads because that
+ * is where most cards end up and where nobody wants to look -- first column,
+ * out of the way of the four that tell the story.
  *
- * Dragging is the obvious interaction, so it is supported -- and so is a plain
- * select on every card, because a board that can only be operated by dragging
- * is closed to anyone using a keyboard.
+ * The column order comes from the server, not from a constant here. It used to
+ * come from both, which is two places for one fact and a guarantee that they
+ * would drift.
+ *
+ * ## Three ways to move a card, on purpose
+ *
+ * A card can be dragged from anywhere on it, moved with the arrows above its
+ * column, or set with the select on the card itself. That is not indulgence:
+ *
+ * * **Dragging** is what people reach for, and restricting it to a small handle
+ *   made the obvious gesture fail on the first try.
+ * * **The arrows** exist because the board is a horizontally scrolling row, and
+ *   dragging a card between columns on a phone means dragging it past the edge
+ *   of the screen and hoping the board scrolls under it. It does not.
+ * * **The select** is the only one of the three a keyboard can operate, so it
+ *   stays whatever else changes.
+ *
+ * Dragging and clicking share the same surface, which works because the pointer
+ * sensor only starts a drag after 5px of movement -- and dnd-kit swallows the
+ * click that follows a real drag, so a card cannot be dropped and opened at
+ * once. Anything interactive *inside* a card stops the gesture itself, or a
+ * drag would begin every time somebody reached for the status select.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   DndContext,
@@ -28,6 +49,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { BOARD_ORDER, type ApplicationStatus, type JobRow } from '@/lib/types';
 import { formatDate, formatWhen } from '@/lib/format';
+import { screenNumber } from '@/lib/screens';
 import {
   Dialog,
   Empty,
@@ -36,20 +58,60 @@ import {
   ScreenHeader,
   StatusPill,
 } from '@/components/primitives';
+import LetterDialog from '@/components/LetterDialog';
+
+const KNOWN_STATUSES = new Set<string>(BOARD_ORDER);
+
+/** Keep a pointer gesture from reaching the card underneath it. */
+const KEEP_TO_ITSELF = {
+  onPointerDown: (event: React.PointerEvent) => event.stopPropagation(),
+  onClick: (event: React.MouseEvent) => event.stopPropagation(),
+};
+
+function StatusSelect({
+  row,
+  order,
+  onMove,
+  className = '',
+}: {
+  row: JobRow;
+  order: ApplicationStatus[];
+  onMove: (next: ApplicationStatus) => void;
+  className?: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <select
+      className={`field w-auto ${className}`}
+      aria-label={`${t('results.status')} — ${row.posting.title}`}
+      value={row.status}
+      {...KEEP_TO_ITSELF}
+      onChange={(event) => onMove(event.target.value as ApplicationStatus)}
+    >
+      {order.map((value) => (
+        <option key={value} value={value}>
+          {t(`status.${value}`)}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 function Card({
   row,
+  order,
   onOpen,
   onMove,
   locale,
 }: {
   row: JobRow;
+  order: ApplicationStatus[];
   onOpen: () => void;
   onMove: (next: ApplicationStatus) => void;
   locale: string;
 }) {
   const { t } = useTranslation();
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: row.dedup_key,
   });
 
@@ -62,49 +124,40 @@ function Card({
         zIndex: isDragging ? 30 : undefined,
         position: 'relative',
       }}
-      className="panel grid gap-[var(--gap-hair)] p-[var(--gap-tight)]"
+      className="panel grid cursor-grab gap-[var(--gap-hair)] p-[var(--gap-tight)] active:cursor-grabbing"
+      onClick={onOpen}
+      {...listeners}
     >
-      <div className="flex items-start gap-[var(--gap-hair)]">
-        <button
-          type="button"
-          className="btn btn-bare cursor-grab px-[0.2rem] text-[var(--ink-faint)] active:cursor-grabbing"
-          aria-label={`Drag ${row.posting.title}`}
-          {...attributes}
-          {...listeners}
-        >
-          ⠿
-        </button>
-        <button
-          type="button"
-          className="min-w-0 flex-1 text-left text-[var(--text-small)] font-semibold leading-snug hover:text-[var(--accent)]"
-          onClick={onOpen}
-        >
-          {row.posting.title}
-        </button>
-      </div>
+      {/* A button, not merely a clickable card: the card handles the pointer,
+          this handles the keyboard, and both open the same dialog. */}
+      <button
+        type="button"
+        className="min-w-0 text-left text-[var(--text-small)] font-semibold leading-snug hover:text-[var(--accent)]"
+        onClick={onOpen}
+      >
+        {row.posting.title}
+      </button>
 
-      <p className="pl-[1.4rem] text-[var(--text-micro)] text-[var(--ink-soft)]">
+      <p className="text-[var(--text-micro)] text-[var(--ink-soft)]">
         {row.posting.company}
         {row.posting.location ? ` · ${row.posting.location}` : ''}
       </p>
 
-      <div className="flex items-center justify-between gap-[var(--gap-hair)] pl-[1.4rem]">
+      {/* Wrapping, not clipping: a column is 12.5rem wide and a date beside a
+          select does not always fit in one. */}
+      <div className="flex flex-wrap items-center justify-between gap-[var(--gap-hair)]">
         <span className="mono text-[var(--text-micro)] text-[var(--ink-faint)]">
           {formatDate(row.found_at, locale)}
         </span>
-        <select
-          className="field w-auto py-[0.05rem] text-[var(--text-micro)]"
-          aria-label={`${t('results.status')} — ${row.posting.title}`}
-          value={row.status}
-          onChange={(event) => onMove(event.target.value as ApplicationStatus)}
-        >
-          {BOARD_ORDER.map((value) => (
-            <option key={value} value={value}>
-              {t(`status.${value}`)}
-            </option>
-          ))}
-        </select>
+        <StatusSelect
+          row={row}
+          order={order}
+          onMove={onMove}
+          className="py-[0.05rem] text-[var(--text-micro)]"
+        />
       </div>
+
+      <span className="sr-only">{t('tracker.openHint')}</span>
     </article>
   );
 }
@@ -112,14 +165,38 @@ function Card({
 function Column({
   status,
   rows,
+  leftTo,
+  rightTo,
+  onShift,
   children,
 }: {
   status: ApplicationStatus;
   rows: JobRow[];
+  /** The neighbouring columns, or `null` at either end of the board. */
+  leftTo: ApplicationStatus | null;
+  rightTo: ApplicationStatus | null;
+  onShift: (to: ApplicationStatus) => void;
   children: React.ReactNode;
 }) {
   const { t } = useTranslation();
   const { setNodeRef, isOver } = useDroppable({ id: status });
+  const top = rows[0];
+
+  const arrow = (to: ApplicationStatus | null, glyph: string) => (
+    <button
+      type="button"
+      className="btn btn-bare px-[0.35rem] text-[var(--ink-faint)] enabled:hover:text-[var(--accent)] disabled:opacity-30"
+      disabled={!to || !top}
+      aria-label={
+        to && top
+          ? t('tracker.moveTopTo', { title: top.posting.title, column: t(`status.${to}`) })
+          : t('tracker.cannotMove')
+      }
+      onClick={() => to && onShift(to)}
+    >
+      {glyph}
+    </button>
+  );
 
   return (
     <section
@@ -131,13 +208,15 @@ function Column({
       }}
     >
       <header
-        className="rule-b flex items-center justify-between px-[var(--gap-tight)] py-[var(--gap-tight)]"
+        className="rule-b flex items-center justify-between gap-[var(--gap-hair)] px-[var(--gap-hair)] py-[var(--gap-hair)]"
         style={{ borderBottomColor: `var(--status-${status})` }}
       >
+        {arrow(leftTo, '‹')}
         <StatusPill status={status} />
         <span className="mono text-[var(--text-micro)] text-[var(--ink-faint)]">
           {rows.length}
         </span>
+        {arrow(rightTo, '›')}
       </header>
 
       <div className="grid flex-1 content-start gap-[var(--gap-tight)] p-[var(--gap-tight)]">
@@ -156,13 +235,17 @@ function Column({
 export default function TrackerScreen() {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState<JobRow | null>(null);
+  /* The key rather than the row: a held row goes stale the moment the card
+     moves, and a dialog still showing the old status after you changed it from
+     inside that dialog would be its own small bug. */
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [letterFor, setLetterFor] = useState<JobRow | null>(null);
 
   const board = useQuery({ queryKey: ['board'], queryFn: api.board });
   const history = useQuery({
-    queryKey: ['history', open?.dedup_key],
-    queryFn: () => api.history(open!.dedup_key),
-    enabled: Boolean(open),
+    queryKey: ['history', openKey],
+    queryFn: () => api.history(openKey!),
+    enabled: Boolean(openKey),
   });
 
   const move = useMutation({
@@ -176,6 +259,26 @@ export default function TrackerScreen() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
+  const columns = board.data?.columns;
+  const served = board.data?.order;
+
+  /** The board's own column order, with the constant as a fallback. */
+  const order = useMemo<ApplicationStatus[]>(() => {
+    const known = (served ?? []).filter((status): status is ApplicationStatus =>
+      KNOWN_STATUSES.has(status),
+    );
+    return known.length ? known : BOARD_ORDER;
+  }, [served]);
+
+  const open = useMemo<JobRow | null>(() => {
+    if (!openKey || !columns) return null;
+    for (const rows of Object.values(columns)) {
+      const found = rows.find((row) => row.dedup_key === openKey);
+      if (found) return found;
+    }
+    return null;
+  }, [openKey, columns]);
+
   const onDragEnd = (event: DragEndEvent) => {
     const next = event.over?.id as ApplicationStatus | undefined;
     if (!next) return;
@@ -187,53 +290,105 @@ export default function TrackerScreen() {
     return <Problem message={String(board.error)} onRetry={() => void board.refetch()} />;
   }
 
-  const columns = board.data?.columns;
   const anything = Object.values(columns ?? {}).some((rows) => rows.length > 0);
 
   return (
     <>
-      <ScreenHeader number="04" title={t('tracker.title')} lede={t('tracker.lede')} />
+      <ScreenHeader
+        number={screenNumber('tracker')}
+        title={t('tracker.title')}
+        lede={t('tracker.lede')}
+      />
 
       {!anything ? (
         <div className="mt-[var(--gap-wide)]">
-          <Empty>{t('results.empty')}</Empty>
+          <Empty>{t('tracker.boardEmpty')}</Empty>
         </div>
       ) : (
         <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragEnd={onDragEnd}>
           {/* Plain `overflow-x`, not `.scroll-x`: paint containment would clip a
               card the moment it was dragged past the edge of the board. */}
           <div className="mt-[var(--gap-wide)] flex gap-[var(--gap-tight)] overflow-x-auto pb-[var(--gap)]">
-            {BOARD_ORDER.map((status) => (
-              <Column key={status} status={status} rows={columns?.[status] ?? []}>
-                {(columns?.[status] ?? []).map((row) => (
-                  <Card
-                    key={row.dedup_key}
-                    row={row}
-                    locale={i18n.language}
-                    onOpen={() => setOpen(row)}
-                    onMove={(next) => move.mutate({ key: row.dedup_key, next })}
-                  />
-                ))}
-              </Column>
-            ))}
+            {order.map((status, index) => {
+              const rows = columns?.[status] ?? [];
+              return (
+                <Column
+                  key={status}
+                  status={status}
+                  rows={rows}
+                  leftTo={order[index - 1] ?? null}
+                  rightTo={order[index + 1] ?? null}
+                  onShift={(to) => {
+                    const top = rows[0];
+                    if (top) move.mutate({ key: top.dedup_key, next: to });
+                  }}
+                >
+                  {rows.map((row) => (
+                    <Card
+                      key={row.dedup_key}
+                      row={row}
+                      order={order}
+                      locale={i18n.language}
+                      onOpen={() => setOpenKey(row.dedup_key)}
+                      onMove={(next) => move.mutate({ key: row.dedup_key, next })}
+                    />
+                  ))}
+                </Column>
+              );
+            })}
           </div>
         </DndContext>
       )}
 
       {open ? (
-        <Dialog title={open.posting.title} onClose={() => setOpen(null)}>
+        <Dialog title={open.posting.title} onClose={() => setOpenKey(null)}>
           <p className="text-[var(--text-small)] text-[var(--ink-soft)]">
             {open.posting.company}
             {open.posting.location ? ` · ${open.posting.location}` : ''}
           </p>
-          <a
-            href={open.posting.url}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="mono mt-[var(--gap-tight)] inline-block text-[var(--text-micro)] text-[var(--accent)] hover:underline"
-          >
-            {t('results.openAd')} ↗
-          </a>
+
+          {/* Everything you would otherwise have closed the dialog to do. It
+              held the ad link and a note and nothing else, which left the one
+              screen that is about deciding unable to act on a decision. */}
+          <div className="mt-[var(--gap)] flex flex-wrap items-center gap-[var(--gap-tight)]">
+            <StatusPill status={open.status} />
+            <StatusSelect
+              row={open}
+              order={order}
+              onMove={(next) => move.mutate({ key: open.dedup_key, next })}
+              className="text-[var(--text-small)]"
+            />
+          </div>
+
+          <div className="mt-[var(--gap)] flex flex-wrap items-center gap-[var(--gap-tight)]">
+            <a
+              href={open.posting.url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="btn btn-quiet"
+            >
+              {t('results.openAd')} ↗
+            </a>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() => {
+                setLetterFor(open);
+                setOpenKey(null);
+              }}
+            >
+              {t('results.letter')}
+            </button>
+            {open.status === 'skipped' ? null : (
+              <button
+                type="button"
+                className="btn btn-bare text-[var(--ink-faint)] hover:text-[var(--bad)]"
+                onClick={() => move.mutate({ key: open.dedup_key, next: 'skipped' })}
+              >
+                {t('tracker.discard')}
+              </button>
+            )}
+          </div>
 
           {open.note ? (
             <p className="panel-sunk mt-[var(--gap)] px-[var(--gap)] py-[var(--gap-tight)] text-[var(--text-small)]">
@@ -273,6 +428,8 @@ export default function TrackerScreen() {
           )}
         </Dialog>
       ) : null}
+
+      {letterFor ? <LetterDialog row={letterFor} onClose={() => setLetterFor(null)} /> : null}
     </>
   );
 }

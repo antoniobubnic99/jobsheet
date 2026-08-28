@@ -5,43 +5,29 @@
  * a menu -- the user can see the whole app and never has to remember where
  * anything lives. The rail carries a number, a name and a one-line hint, so the
  * app explains itself without a tour.
+ *
+ * The one thing that *is* a menu is the account, and it sits at the top of the
+ * rail at every width. It used to be a name and a sign-out link pinned to the
+ * bottom behind `hidden md:block`: on a phone the app would not say whose
+ * search you were reading and offered no way out of it. The screen list, the
+ * account and the language switch are now all reachable on a 375px screen,
+ * because that is the width the person checking their applications on the bus
+ * is actually holding.
+ *
+ * The numbering comes from `lib/screens`, not from here. It has to: the rail
+ * and each screen's own heading both print it, and they disagreed the moment a
+ * screen was hidden from the rail.
  */
 
 import { NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
-import { useAccount } from '@/lib/account';
+import { RAIL_SCREENS } from '@/lib/screens';
 import LanguagePicker from '@/components/LanguagePicker';
-
-/**
- * Screens kept out of the rail.
- *
- * Hidden, not removed: the route still resolves, so `/designer` works if you
- * type it or follow a link, and nothing that depends on a layout stops working.
- * The sheet designer is a thing you use once, when you decide what the workbook
- * should look like; after that it is a door you walk past every day and never
- * open. The workbook carries its own layout, so the design survives without it.
- *
- * Take a key out of this list to put the screen back in the rail. Numbering
- * below is computed, so the rail stays 01, 02, 03… with no gap where this was.
- */
-const HIDDEN_FROM_RAIL: readonly string[] = ['designer'];
-
-const ALL_SCREENS = [
-  { to: '/', key: 'search', end: true },
-  { to: '/results', key: 'results', end: false },
-  { to: '/designer', key: 'designer', end: false },
-  { to: '/tracker', key: 'tracker', end: false },
-  { to: '/settings', key: 'settings', end: false },
-] as const;
-
-const SCREENS = ALL_SCREENS.filter((screen) => !HIDDEN_FROM_RAIL.includes(screen.key)).map(
-  (screen, index) => ({ ...screen, number: String(index + 1).padStart(2, '0') }),
-);
+import ProfileMenu from '@/components/ProfileMenu';
 
 export default function Shell() {
   const { t } = useTranslation();
-  const { account, signOut } = useAccount();
 
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[var(--rail-width)_1fr]">
@@ -49,7 +35,7 @@ export default function Shell() {
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:bg-[var(--surface)] focus:px-3 focus:py-2"
       >
-        Skip to content
+        {t('app.skipToContent')}
       </a>
 
       <nav
@@ -68,10 +54,12 @@ export default function Shell() {
             </p>
           </div>
 
+          <ProfileMenu className="rule-t rule-b" />
+
           {/* A strip on a phone, a column on a desktop. The items must not
               shrink into each other on the strip, hence `shrink-0`. */}
           <ul className="scroll-x flex flex-1 flex-row md:flex-col md:overflow-visible">
-            {SCREENS.map((screen) => (
+            {RAIL_SCREENS.map((screen) => (
               <li key={screen.to} className="shrink-0 md:rule-t">
                 <NavLink
                   to={screen.to}
@@ -109,21 +97,7 @@ export default function Shell() {
             ))}
           </ul>
 
-          {/* Whose search this is. Not decoration: one install can hold several,
-              and the only thing standing between "my applications" and
-              somebody else's is knowing which account is open. */}
-          <div className="rule-t hidden px-[var(--gap-wide)] py-[var(--gap)] md:block">
-            <p className="text-[var(--text-small)] font-semibold">{account?.username}</p>
-            <button
-              type="button"
-              className="btn btn-bare px-0 text-[var(--text-micro)] text-[var(--ink-faint)]"
-              onClick={() => void signOut()}
-            >
-              {t('auth.signOut')}
-            </button>
-          </div>
-
-          <LanguagePicker className="rule-t hidden px-[var(--gap-wide)] py-[var(--gap)] md:flex" />
+          <LanguagePicker className="rule-t flex px-[var(--gap-wide)] py-[var(--gap)]" />
         </div>
       </nav>
 

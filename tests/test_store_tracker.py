@@ -61,15 +61,17 @@ class TestBoardOrder:
     def test_every_status_has_a_column(self) -> None:
         assert set(BOARD_ORDER) == set(ApplicationStatus)
 
-    def test_new_leads_and_skipped_trails(self) -> None:
-        assert BOARD_ORDER[0] is ApplicationStatus.NEW
-        assert BOARD_ORDER[-1] is ApplicationStatus.SKIPPED
+    def test_discarded_leads_and_rejected_trails(self) -> None:
+        """The ones you threw out first, then the four that tell the story."""
+        assert BOARD_ORDER[0] is ApplicationStatus.SKIPPED
+        assert BOARD_ORDER[1] is ApplicationStatus.NEW
+        assert BOARD_ORDER[-1] is ApplicationStatus.REJECTED
 
     def test_my_decision_is_not_filed_under_their_decision(self) -> None:
         """SKIPPED sits apart from REJECTED on purpose; they are different stories."""
         rejected = BOARD_ORDER.index(ApplicationStatus.REJECTED)
         skipped = BOARD_ORDER.index(ApplicationStatus.SKIPPED)
-        assert skipped > rejected
+        assert abs(rejected - skipped) > 1
 
 
 # ---------------------------------------------------------------- reading back
