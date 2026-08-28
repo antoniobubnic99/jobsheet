@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jobsheet"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Collect job ads from anywhere. Get a spreadsheet you actually own."
 readme = "README.md"
 license = { file = "LICENSE" }
