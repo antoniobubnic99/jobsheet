@@ -165,7 +165,7 @@
   },
   "tracker": {
     "title": "Tracker",
-    "lede": "Drag a card to move it. Every move is dated, so \"when did I apply?\" has an answer.",
+    "lede": "Drag a card, or use the arrows above a column. Every move is dated, so \"when did I apply?\" has an answer.",
     "empty": "Nothing here yet.",
     "history": "History",
     "noHistory": "This one has not moved yet.",
@@ -370,8 +370,7 @@
       "fileName": "File name",
       "title": "Where should your spreadsheet live?",
       "lede": "This is the file you will actually open. Put it somewhere you look -- your Desktop is a good answer.",
-      "label": "Workbook",
-      "hint": "Leave it empty and JobSheet keeps it with everything else. Must end in .xlsx, and the folder has to exist."
+      "hint": "Touch neither and JobSheet keeps the file with everything else. The name has to end in .xlsx."
     },
     "summary": {
       "label": "So, to be clear",

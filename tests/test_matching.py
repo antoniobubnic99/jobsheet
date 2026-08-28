@@ -12,6 +12,8 @@ from datetime import date
 import pytest
 
 from jobsheet.core.matching import (
+    DREAM_FLAG,
+    UNSTATED_CONTRACT_FLAG,
     KeywordGroup,
     SearchProfile,
     flags_for,
@@ -243,6 +245,124 @@ def test_description_only_rule_is_off_by_default() -> None:
     hit = match(ad, profile)
     assert hit is not None
     assert rejection_for(ad, hit, profile, today=TODAY) is None
+
+
+# ------------------------------------------- the contract the user is asking for
+
+
+class TestWantedEmploymentTypes:
+    """The positive form of the contract filter, added in the wizard rewrite.
+
+    A separate field from `excluded_employment_types` rather than a rename of it,
+    because a rename would have broken every profile already saved -- see
+    `store.profiles` and `test_profile_migration.py`. Both fields still work.
+    """
+
+    def test_an_empty_list_changes_nothing(self) -> None:
+        profile = base_profile(wanted_employment_types=[])
+        ad = posting(employment_type="Na određeno vrijeme")
+        hit = match(ad, profile)
+        assert hit is not None
+        assert rejection_for(ad, hit, profile, today=TODAY) is None
+
+    def test_the_contract_that_was_asked_for_is_kept(self) -> None:
+        profile = base_profile(wanted_employment_types=["neodređeno"])
+        ad = posting(employment_type="Na neodređeno vrijeme")
+        hit = match(ad, profile)
+        assert hit is not None
+        assert rejection_for(ad, hit, profile, today=TODAY) is None
+
+    def test_a_different_contract_is_rejected(self) -> None:
+        profile = base_profile(wanted_employment_types=["puno radno vrijeme"])
+        ad = posting(employment_type="Nepuno radno vrijeme")
+        hit = match(ad, profile)
+        assert hit is not None
+        rejection = rejection_for(ad, hit, profile, today=TODAY)
+        assert rejection is not None
+        assert rejection.code == "employment_type_not_wanted"
+        assert rejection.detail == "Nepuno radno vrijeme"
+
+    def test_an_ad_that_names_no_contract_is_kept_and_flagged(self) -> None:
+        """Fail open. Half the feeds omit the field, and refusing those would
+        throw most of the search away to enforce a preference."""
+        profile = base_profile(wanted_employment_types=["neodređeno"])
+        ad = posting(employment_type="")
+        hit = match(ad, profile)
+        assert hit is not None
+        assert rejection_for(ad, hit, profile, today=TODAY) is None
+        assert UNSTATED_CONTRACT_FLAG in flags_for(ad, profile, today=TODAY)
+
+    def test_nothing_is_flagged_when_no_contract_was_asked_for(self) -> None:
+        profile = base_profile()
+        assert UNSTATED_CONTRACT_FLAG not in flags_for(posting(employment_type=""), profile)
+
+    def test_it_is_a_stem_like_every_other_term(self) -> None:
+        """"praksa" has to find "Praksa/pripravništvo" without being spelled out."""
+        profile = base_profile(wanted_employment_types=["praksa"])
+        ad = posting(employment_type="Praksa/pripravništvo")
+        hit = match(ad, profile)
+        assert hit is not None
+        assert rejection_for(ad, hit, profile, today=TODAY) is None
+
+    def test_the_blocklist_still_works_beside_it(self) -> None:
+        """Both fields are live; neither replaced the other."""
+        profile = base_profile(
+            wanted_employment_types=["određeno"],
+            excluded_employment_types=["student"],
+        )
+        ad = posting(employment_type="Studentski ugovor na određeno")
+        hit = match(ad, profile)
+        assert hit is not None
+        rejection = rejection_for(ad, hit, profile, today=TODAY)
+        assert rejection is not None
+        assert rejection.code == "employment_type"
+
+
+# ------------------------------------------------------- employers worth a star
+
+
+class TestDreamEmployers:
+    def test_a_dream_employer_is_flagged(self) -> None:
+        profile = base_profile(dream_employers=["Ericsson Nikola Tesla"])
+        ad = posting(company="ERICSSON NIKOLA TESLA d.d.")
+        assert DREAM_FLAG in flags_for(ad, profile, today=TODAY)
+
+    def test_the_legal_form_does_not_have_to_be_typed(self) -> None:
+        profile = base_profile(dream_employers=["Geodetski zavod d.o.o."])
+        assert DREAM_FLAG in flags_for(posting(company="GEODETSKI ZAVOD"), profile, today=TODAY)
+
+    def test_part_of_a_name_is_enough(self) -> None:
+        """Somebody who wrote "Ericsson" means every Ericsson."""
+        profile = base_profile(dream_employers=["Ericsson"])
+        assert DREAM_FLAG in flags_for(posting(company="Ericsson Nikola Tesla d.d."), profile)
+
+    def test_it_comes_first_so_the_row_reads_as_worth_opening(self) -> None:
+        profile = base_profile(
+            dream_employers=["Example"], flags={"mentions German": ["german"]}
+        )
+        ad = posting(company="Example d.o.o.", description="German is a plus")
+        assert flags_for(ad, profile, today=TODAY)[0] == DREAM_FLAG
+
+    def test_another_employer_is_not_flagged(self) -> None:
+        profile = base_profile(dream_employers=["Ericsson"])
+        assert DREAM_FLAG not in flags_for(posting(company="Geodetski zavod d.o.o."), profile)
+
+    def test_it_never_rejects_anything(self) -> None:
+        """The whole point: it marks a row, it does not decide anything."""
+        profile = base_profile(dream_employers=["Ericsson"])
+        ad = posting(company="Somebody Else d.o.o.")
+        hit = match(ad, profile)
+        assert hit is not None
+        assert rejection_for(ad, hit, profile, today=TODAY) is None
+
+    def test_an_ad_with_no_employer_is_not_a_dream_job(self) -> None:
+        profile = base_profile(dream_employers=["Ericsson"])
+        assert DREAM_FLAG not in flags_for(posting(company=""), profile, today=TODAY)
+
+    def test_a_wish_that_is_only_a_legal_form_matches_nothing(self) -> None:
+        """"d.o.o." normalises to nothing, and nothing must not match everything."""
+        profile = base_profile(dream_employers=["d.o.o."])
+        assert DREAM_FLAG not in flags_for(posting(company="Example d.o.o."), profile)
 
 
 # ------------------------------------------------------------------- soft flags

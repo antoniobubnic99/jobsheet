@@ -21,6 +21,7 @@ from jobsheet.api.state import CurrentState
 from jobsheet.core.matching import SearchProfile
 from jobsheet.core.setup import SearchSetup
 from jobsheet.sheet.layout import SheetLayout
+from jobsheet.store.profiles import fit_to_model
 
 router = APIRouter(prefix="/api/profiles", tags=["profiles"])
 
@@ -80,8 +81,11 @@ def load_profile(kind: str, name: str, state: CurrentState) -> dict[str, Any]:
 def save_profile(kind: str, name: str, body: ProfileBody, state: CurrentState) -> dict[str, Any]:
     model = _model_for(kind)
     name = _clean_name(name)
+    # Fitted before validation, not only on the way out of the database: a
+    # browser tab left open across an upgrade will PUT back the shape it loaded
+    # an hour ago, and refusing that would look like the save button broke.
     try:
-        validated = model.model_validate(body.payload)
+        validated = model.model_validate(fit_to_model(model, body.payload))
     except ValidationError as error:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,

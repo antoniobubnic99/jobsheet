@@ -45,7 +45,20 @@ const SOURCES = {
       homepage: 'https://burzarada.hzz.hr/',
       description: 'Croatian public employment service.',
       country: 'HR',
-      params: [],
+      // The real HZZ declares this, and declares it required: a source ticked
+      // without its defaults fails the search on a missing parameter.
+      params: [
+        {
+          name: 'counties',
+          label: 'Counties',
+          kind: 'multiselect',
+          required: true,
+          default: ['4'],
+          choices: [{ value: '4', label: 'Grad Zagreb' }],
+          placeholder: '',
+          help: '',
+        },
+      ],
       rate_limit: 0.7,
       supports_enrich: true,
       needs_credentials: false,
@@ -53,6 +66,20 @@ const SOURCES = {
       health: null,
     },
   ],
+};
+
+/** What the last step's folder picker gets. Unlisted paths answer `{}`, which it
+ *  cannot render -- and a wizard that crashes on its own last screen is the one
+ *  failure this file exists to catch. */
+const FOLDERS = {
+  path: 'C:/JobSheet',
+  parent: 'C:/',
+  home: 'C:/Users/ana',
+  jobsheet_home: 'C:/JobSheet',
+  roots: [{ name: 'C:', path: 'C:/' }],
+  writable: true,
+  folders: [{ name: 'Documents', path: 'C:/JobSheet/Documents' }],
+  message: '',
 };
 
 interface Reply {
@@ -119,6 +146,9 @@ async function step(name: string | RegExp) {
 
 beforeEach(async () => {
   await i18n.changeLanguage('en');
+  // The wizard now keeps a draft, which is the whole point of it -- and which
+  // would otherwise carry one test's answers into the next.
+  sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -145,6 +175,7 @@ describe('the gate', () => {
     serve({
       '/api/auth/me': { body: { ...ACCOUNT, onboarded: false } },
       '/api/sources': { body: SOURCES },
+      '/api/settings/folders': { body: FOLDERS },
     });
     mount();
 
@@ -326,7 +357,7 @@ describe('the door', () => {
 
 describe('the wizard', () => {
   const walkToTheEnd = async () => {
-    for (let step = 0; step < 7; step += 1) {
+    for (let step = 0; step < 6; step += 1) {
       await userEvent.click(screen.getByRole('button', { name: 'Next' }));
     }
   };
@@ -335,6 +366,7 @@ describe('the wizard', () => {
     serve({
       '/api/auth/me': { body: { ...ACCOUNT, onboarded: false } },
       '/api/sources': { body: SOURCES },
+      '/api/settings/folders': { body: FOLDERS },
     });
     mount();
     await screen.findByRole('heading', { name: 'What job are you after?' });
@@ -351,6 +383,7 @@ describe('the wizard', () => {
     const calls = serve({
       '/api/auth/me': { body: { ...ACCOUNT, onboarded: false } },
       '/api/sources': { body: SOURCES },
+      '/api/settings/folders': { body: FOLDERS },
       'POST /api/auth/onboarding': { body: ACCOUNT },
       '/api/profiles/setup/default': { status: 404, body: { detail: 'no such profile' } },
     });
@@ -366,11 +399,11 @@ describe('the wizard', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Next' }));
 
     await userEvent.type(screen.getByLabelText(/Towns and cities/), 'Rijeka{Enter}');
-    for (let step = 0; step < 4; step += 1) {
+    for (let step = 0; step < 3; step += 1) {
       await userEvent.click(screen.getByRole('button', { name: 'Next' }));
     }
 
-    // 07 — sources.
+    // 06 — sources.
     await userEvent.click(screen.getByLabelText(/HZZ Burza rada/i));
     await userEvent.click(screen.getByRole('button', { name: 'Next' }));
 
@@ -399,6 +432,7 @@ describe('the wizard', () => {
     const calls = serve({
       '/api/auth/me': { body: { ...ACCOUNT, onboarded: false } },
       '/api/sources': { body: SOURCES },
+      '/api/settings/folders': { body: FOLDERS },
       'POST /api/auth/onboarding': { body: ACCOUNT },
     });
     mount();
@@ -409,7 +443,7 @@ describe('the wizard', () => {
     // the spreadsheet if it were kept.
     await userEvent.type(screen.getByLabelText(/Category name/i), 'GIS');
 
-    for (let step = 0; step < 5; step += 1) {
+    for (let step = 0; step < 4; step += 1) {
       await userEvent.click(screen.getByRole('button', { name: 'Next' }));
     }
     await userEvent.click(screen.getByLabelText(/HZZ Burza rada/i));
@@ -419,5 +453,209 @@ describe('the wizard', () => {
     const sent = calls.find((call) => call.path === '/api/auth/onboarding');
     const body = sent!.body as { setup: { profile: { keyword_groups: unknown[] } } };
     expect(body.setup.profile.keyword_groups).toEqual([]);
+  });
+});
+
+/**
+ * The fields the wizard is made of, tested where they were complained about.
+ *
+ * Each of these was a real report: text that vanished, a chip that disappeared
+ * under one keystroke, four screens of typing lost to a remount, and a step
+ * nobody could tell what to do with.
+ */
+describe('the wizard fields', () => {
+  const onboarding = (extra: Record<string, Reply> = {}) =>
+    serve({
+      '/api/auth/me': { body: { ...ACCOUNT, onboarded: false } },
+      '/api/sources': { body: SOURCES },
+      '/api/settings/folders': { body: FOLDERS },
+      '/api/places': { body: { places: [], counties: [] } },
+      '/api/postings/companies': { body: { companies: [], total: 0 } },
+      ...extra,
+    });
+
+  const startAtKeywords = async () => {
+    mount();
+    await screen.findByRole('heading', { name: 'What job are you after?' });
+    await userEvent.type(screen.getByLabelText(/The job you want/), 'Surveyor');
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+  };
+
+  const forward = async (times: number) => {
+    for (let step = 0; step < times; step += 1) {
+      await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    }
+  };
+
+  it('keeps a duplicate in the field instead of swallowing it', async () => {
+    // The complaint, in the user's words: "when I click around, my typing gets
+    // deleted". It was a duplicate being cleared without a word said.
+    onboarding();
+    await startAtKeywords();
+
+    const words = screen.getByLabelText(/Words that mean it/i);
+    await userEvent.type(words, 'gis{Enter}');
+    await userEvent.type(words, 'gis');
+    await userEvent.tab();
+
+    expect(words).toHaveValue('gis');
+    expect(await screen.findByRole('status')).toHaveTextContent('already in the list');
+  });
+
+  it('takes two backspaces to remove a chip, not one', async () => {
+    onboarding();
+    await startAtKeywords();
+
+    const words = screen.getByLabelText(/Words that mean it/i);
+    await userEvent.type(words, 'gis{Enter}');
+
+    // `keyboard` rather than `type`, which clicks first: a click in the field
+    // disarms, which is the behaviour, and would hide the thing being tested.
+    await userEvent.keyboard('{Backspace}');
+    expect(screen.getByRole('status')).toHaveTextContent('Backspace again');
+    expect(screen.getByText('gis')).toBeInTheDocument();
+
+    await userEvent.keyboard('{Backspace}');
+    expect(screen.queryByText('gis')).not.toBeInTheDocument();
+
+    // And a click between the two presses puts the chip back out of reach.
+    await userEvent.type(words, 'cad{Enter}');
+    await userEvent.keyboard('{Backspace}');
+    await userEvent.click(words);
+    await userEvent.keyboard('{Backspace}');
+    expect(screen.getByText('cad')).toBeInTheDocument();
+  });
+
+  it('says what the keywords step is going to do', async () => {
+    onboarding();
+    await startAtKeywords();
+
+    // The explanation of stems is the answer to "I do not understand this screen".
+    expect(screen.getByText(/beginnings, not whole words/)).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/Category name/i), 'GIS');
+    await userEvent.type(screen.getByLabelText(/Words that mean it/i), 'gis{Enter}');
+
+    expect(screen.getByText(/under the category/)).toBeInTheDocument();
+  });
+
+  it('warns about having no keywords without blocking the way forward', async () => {
+    onboarding();
+    await startAtKeywords();
+
+    expect(
+      screen.getByText(/every ad from every source you pick comes through/),
+    ).toBeInTheDocument();
+    // Warned, never blocked: "show me the whole feed" is a legitimate request.
+    expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
+  });
+
+  it('offers words from the headline, and only when asked', async () => {
+    onboarding();
+    await startAtKeywords();
+
+    expect(screen.getByText(/From/)).toBeInTheDocument();
+    // Nothing has been written into the field: it is an offer, not an autofill.
+    expect(screen.getByLabelText(/Category name/i)).toHaveValue('');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Use these' }));
+    expect(screen.getByLabelText(/Category name/i)).toHaveValue('Surveyor');
+    expect(screen.getByText('surveyor')).toBeInTheDocument();
+  });
+
+  it('survives being unmounted with two screens of typing in it', async () => {
+    // `Gate` swaps this component out whenever /api/auth/me answers 401 or the
+    // server pauses long enough to look as though it has. Before the draft,
+    // that threw the whole wizard away with nothing said and nothing to click.
+    onboarding();
+    const first = mount();
+    await screen.findByRole('heading', { name: 'What job are you after?' });
+    await userEvent.type(screen.getByLabelText(/The job you want/), 'Surveyor');
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await userEvent.type(screen.getByLabelText(/Category name/i), 'GIS');
+
+    first.unmount();
+    mount();
+
+    expect(await screen.findByLabelText(/Category name/i)).toHaveValue('GIS');
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByLabelText(/The job you want/)).toHaveValue('Surveyor');
+  });
+
+  it('does not hand one account the half-finished wizard of another', async () => {
+    onboarding();
+    const first = mount();
+    await screen.findByRole('heading', { name: 'What job are you after?' });
+    await userEvent.type(screen.getByLabelText(/The job you want/), 'Surveyor');
+    first.unmount();
+
+    serve({
+      '/api/auth/me': { body: { ...ACCOUNT, id: 2, username: 'ivo', onboarded: false } },
+      '/api/sources': { body: SOURCES },
+      '/api/settings/folders': { body: FOLDERS },
+    });
+    mount();
+
+    expect(await screen.findByLabelText(/The job you want/)).toHaveValue('');
+  });
+
+  it('picks every source at once, with the parameters each one needs', async () => {
+    // The trap the bulk buttons had to be built around: HZZ declares `counties`
+    // as required, so a source ticked without its defaults fails the search on
+    // a missing parameter -- and does it later, on another screen.
+    const calls = onboarding({ 'POST /api/auth/onboarding': { body: ACCOUNT } });
+    mount();
+    await screen.findByRole('heading', { name: 'What job are you after?' });
+
+    await forward(5);
+    await userEvent.click(screen.getByRole('button', { name: 'Select all' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Take me to the search' }));
+
+    const sent = calls.find((call) => call.path === '/api/auth/onboarding');
+    const body = sent!.body as {
+      setup: { sources: { source_id: string; params: Record<string, unknown> }[] };
+    };
+    expect(body.setup.sources.map((one) => one.source_id)).toEqual(['hzz']);
+    expect(body.setup.sources[0]!.params).toEqual({ counties: ['4'] });
+  });
+
+  it('clears every source with one button', async () => {
+    onboarding();
+    mount();
+    await screen.findByRole('heading', { name: 'What job are you after?' });
+
+    await forward(5);
+    await userEvent.click(screen.getByRole('button', { name: 'Select all' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByRole('button', { name: 'Take me to the search' })).toBeDisabled();
+  });
+
+  it('sends the contracts that were ticked, and leaves the old field alone', async () => {
+    const calls = onboarding({ 'POST /api/auth/onboarding': { body: ACCOUNT } });
+    mount();
+    await screen.findByRole('heading', { name: 'What job are you after?' });
+
+    await forward(4);
+    await userEvent.click(screen.getByLabelText(/Permanent/));
+    // The fail-open rule, said out loud the moment a box is ticked.
+    expect(screen.getByText(/still comes through, marked/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await userEvent.click(screen.getByLabelText(/HZZ Burza rada/i));
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Take me to the search' }));
+
+    const sent = calls.find((call) => call.path === '/api/auth/onboarding');
+    const body = sent!.body as {
+      setup: {
+        profile: { wanted_employment_types: string[]; excluded_employment_types: string[] };
+      };
+    };
+    expect(body.setup.profile.wanted_employment_types).toEqual(['neodređeno']);
+    // A5's whole point: the old field is untouched, not renamed.
+    expect(body.setup.profile.excluded_employment_types).toEqual([]);
   });
 });

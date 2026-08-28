@@ -23,11 +23,13 @@ from typing import Any
 
 from jobsheet.core.dates import parse_date
 from jobsheet.core.models import Posting
+from jobsheet.data.places_hr import COUNTIES
 from jobsheet.sources._parse import labelled_fields, parse_feed, strip_html
 from jobsheet.sources.base import (
     Choice,
     FetchContext,
     ParamSpec,
+    Phase,
     Source,
     SourceManifest,
 )
@@ -37,33 +39,10 @@ __all__ = ["COUNTIES", "HzzSource"]
 FEED = "https://burzarada.hzz.hr/rss/rsszup{number}.xml"
 ENCODING = "iso-8859-2"
 
-# HZZ numbers its feeds by the Croatian alphabetical order of county names, which
-# is NOT the official county code -- Karlovačka is officially 04 but feed 6 here.
-# Feeds 4, 6 and 21 were verified against live data on 2026-08-24; the rest follow
-# the same documented alphabetical rule.
-COUNTIES: dict[int, str] = {
-    1: "Bjelovarsko-bilogorska",
-    2: "Brodsko-posavska",
-    3: "Dubrovačko-neretvanska",
-    4: "Grad Zagreb",
-    5: "Istarska",
-    6: "Karlovačka",
-    7: "Koprivničko-križevačka",
-    8: "Krapinsko-zagorska",
-    9: "Ličko-senjska",
-    10: "Međimurska",
-    11: "Osječko-baranjska",
-    12: "Požeško-slavonska",
-    13: "Primorsko-goranska",
-    14: "Sisačko-moslavačka",
-    15: "Splitsko-dalmatinska",
-    16: "Šibensko-kninska",
-    17: "Varaždinska",
-    18: "Virovitičko-podravska",
-    19: "Vukovarsko-srijemska",
-    20: "Zadarska",
-    21: "Zagrebačka",
-}
+# The feed numbers are HZZ's own alphabetical index and NOT the official county
+# codes -- Karlovačka is officially 04 but feed 6 here. The table itself lives in
+# `jobsheet.data.places_hr`, where the wizard can reach it without importing a
+# source; feeds 4, 6 and 21 were verified against live data on 2026-08-24.
 
 # The labels HZZ flattens into the description, in its own wording.
 _FEED_LABELS = ("Opis posla", "Kategorija", "Rok za prijavu", "Mjesto rada", "Općina", "Županija")
@@ -111,7 +90,11 @@ class HzzSource(Source):
         chosen = _as_numbers(self.param(params, "counties"))
         postings: list[Posting] = []
 
-        for number in chosen:
+        # One step per county rather than one for the whole source: HZZ is the
+        # slowest thing JobSheet does, and a bar that sits still for twenty
+        # counties looks like a hang.
+        for index, number in enumerate(chosen):
+            ctx.step("hzz", Phase.FETCHING, index + 1, len(chosen))
             name = COUNTIES.get(number, str(number))
             try:
                 text = await ctx.http.get_text(FEED.format(number=number), encoding=ENCODING)

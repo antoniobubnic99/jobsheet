@@ -56,6 +56,7 @@ from jobsheet.sheet import writer
 from jobsheet.sheet.layout import SheetLayout
 from jobsheet.sources import registry
 from jobsheet.store.db import Database
+from jobsheet.store.profiles import fit_to_model
 from jobsheet.store.tracker import Tracker, merge_from_sheet
 from jobsheet.store.users import User, UserError, UserStore
 
@@ -323,7 +324,7 @@ def command_run(args: argparse.Namespace) -> int:
             if saved is None:
                 _say(f"no saved search called {args.profile!r}")
                 return 2
-            profile = SearchProfile.model_validate(saved)
+            profile = SearchProfile.model_validate(fit_to_model(SearchProfile, saved))
 
         report = asyncio.run(
             run_search(
@@ -379,7 +380,7 @@ def command_export(args: argparse.Namespace) -> int:
             if saved is None:
                 _say(f"no saved layout called {args.layout!r}")
                 return 2
-            layout = SheetLayout.model_validate(saved)
+            layout = SheetLayout.model_validate(fit_to_model(SheetLayout, saved))
 
         if args.format == "xlsx":
             return _export_workbook(db, settings, layout, args.status)

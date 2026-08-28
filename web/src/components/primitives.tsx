@@ -5,7 +5,16 @@
  * three times, not because a design system was planned in advance.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+// React's KeyboardEvent is aliased rather than imported under its own name:
+// unaliased it shadows the DOM one for the whole module, and `Dialog` below
+// hands a listener straight to `document.addEventListener`.
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 
 import type { ApplicationStatus } from '@/lib/types';
@@ -18,7 +27,8 @@ export function ScreenHeader({
   lede,
   aside,
 }: {
-  number: string;
+  /** A position in the rail, from `screenNumber`. Empty for a screen not in it. */
+  number?: string;
   title: string;
   lede: string;
   aside?: ReactNode;
@@ -27,8 +37,10 @@ export function ScreenHeader({
     <header className="rule-b flex flex-wrap items-end justify-between gap-[var(--gap-wide)] pb-[var(--gap-wide)]">
       <div className="max-w-[46ch]">
         {/* The number is the Swiss device: it orients you in a five-screen app
-            without a breadcrumb trail nobody reads. */}
-        <p className="eyebrow mono mb-[var(--gap-tight)]">{number}</p>
+            without a breadcrumb trail nobody reads. A screen you can only reach
+            from a menu has no place in that count, and prints no number rather
+            than borrowing one that belongs to a screen in the rail. */}
+        {number ? <p className="eyebrow mono mb-[var(--gap-tight)]">{number}</p> : null}
         <h1 style={{ fontSize: 'var(--text-title)' }}>{title}</h1>
         <p className="mt-[var(--gap-tight)] text-[var(--text-small)] text-[var(--ink-soft)]">
           {lede}
@@ -146,13 +158,168 @@ export function Toggle({
   );
 }
 
+/** How long a duplicate stays highlighted before the answer has been given. */
+const DUPLICATE_HINT_MS = 1200;
+
 /**
- * A list of short strings the user builds up by typing.
+ * The rules a list-of-strings field follows, apart from how it looks.
  *
- * Enter commits, Backspace on an empty field removes the last one -- the
- * behaviour every chip input has, because anything else is a small betrayal of
- * muscle memory.
+ * Extracted because there are two of these -- the plain `ChipInput` and the
+ * `Combobox` that suggests from a list -- and the rules below are the fiddly
+ * part. Two shells, one state machine, one place to fix a mistake.
+ *
+ * Enter commits and Backspace reaches for the last chip, which is what every
+ * chip input does and what muscle memory expects. Two departures from that,
+ * both because the plain version made this the most complained-about control in
+ * the wizard:
+ *
+ * * **A duplicate leaves the text where it is** and lights up the chip that
+ *   already says it. Clearing the field silently was read as "it deleted what I
+ *   typed" -- which is what it looked like, because the reason somebody types a
+ *   value twice is that they did not notice the chip the first time.
+ * * **Backspace takes two presses.** The first arms the last chip, the second
+ *   removes it. One keystroke destroying a value with no undo is too cheap.
+ *   Any other key, or a click anywhere in the field, disarms it.
  */
+export function useChips(values: string[], onChange: (next: string[]) => void) {
+  const [draft, setDraft] = useState('');
+  const [duplicate, setDuplicate] = useState('');
+  const [armed, setArmed] = useState(false);
+
+  useEffect(() => {
+    if (!duplicate) return;
+    const timer = setTimeout(() => setDuplicate(''), DUPLICATE_HINT_MS);
+    return () => clearTimeout(timer);
+  }, [duplicate]);
+
+  const add = (raw: string) => {
+    const value = raw.trim();
+    // An empty draft still disappears without a word: there is nothing to lose
+    // and nothing to say, and a remark about whitespace would be noise.
+    if (!value) {
+      setDraft('');
+      return false;
+    }
+    if (values.includes(value)) {
+      setDuplicate(value);
+      return false;
+    }
+    onChange([...values, value]);
+    setDraft('');
+    setDuplicate('');
+    return true;
+  };
+
+  const type = (next: string) => {
+    setDraft(next);
+    setDuplicate('');
+    setArmed(false);
+  };
+
+  /** Returns true when it handled the key, so the caller knows to stop. */
+  const handleKey = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter' || event.key === ',') {
+      event.preventDefault();
+      setArmed(false);
+      add(draft);
+      return true;
+    }
+    if (event.key === 'Backspace' && !draft && values.length) {
+      // `preventDefault` on the arming press too, so the caret does not also
+      // chew into whatever is behind this field.
+      event.preventDefault();
+      if (armed) {
+        onChange(values.slice(0, -1));
+        setArmed(false);
+      } else {
+        setArmed(true);
+      }
+      return true;
+    }
+    setArmed(false);
+    return false;
+  };
+
+  return {
+    draft,
+    duplicate,
+    armed,
+    add,
+    type,
+    handleKey,
+    disarm: () => setArmed(false),
+    blur: () => {
+      setArmed(false);
+      add(draft);
+    },
+    last: values.length ? values[values.length - 1] : undefined,
+  };
+}
+
+/** The chips themselves, plus whatever the state machine wants to say about them. */
+export function ChipList({
+  values,
+  onChange,
+  duplicate,
+  doomed,
+}: {
+  values: string[];
+  onChange: (next: string[]) => void;
+  duplicate: string;
+  doomed?: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {values.map((value) => (
+        <span
+          key={value}
+          className="inline-flex items-center gap-[0.3rem] rounded-[var(--radius-sharp)] border bg-[var(--accent-soft)] px-[0.4rem] py-[0.1rem] text-[var(--text-small)] transition-colors"
+          style={{
+            borderColor:
+              value === duplicate
+                ? 'var(--accent)'
+                : value === doomed
+                  ? 'var(--bad)'
+                  : 'transparent',
+          }}
+        >
+          {value}
+          <button
+            type="button"
+            className="text-[var(--ink-faint)] hover:text-[var(--bad)]"
+            onClick={() => onChange(values.filter((item) => item !== value))}
+            aria-label={t('common.remove', { value })}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+    </>
+  );
+}
+
+/** What the field says when it has just refused to do the obvious thing. */
+export function ChipHint({ duplicate, doomed }: { duplicate: string; doomed?: string }) {
+  const { t } = useTranslation();
+  if (duplicate) {
+    return (
+      <span role="status" className="w-full text-[var(--text-micro)] text-[var(--ink-soft)]">
+        {t('common.alreadyThere', { value: duplicate })}
+      </span>
+    );
+  }
+  if (doomed) {
+    return (
+      <span role="status" className="w-full text-[var(--text-micro)] text-[var(--ink-soft)]">
+        {t('common.backspaceAgain', { value: doomed })}
+      </span>
+    );
+  }
+  return null;
+}
+
+/** A list of short strings the user builds up by typing. See `useChips`. */
 export function ChipInput({
   values,
   onChange,
@@ -164,52 +331,30 @@ export function ChipInput({
   placeholder?: string;
   ariaLabel: string;
 }) {
-  const [draft, setDraft] = useState('');
-
-  const commit = () => {
-    const value = draft.trim();
-    if (!value || values.includes(value)) {
-      setDraft('');
-      return;
-    }
-    onChange([...values, value]);
-    setDraft('');
-  };
+  const chips = useChips(values, onChange);
+  const doomed = chips.armed ? chips.last : undefined;
 
   return (
-    <div className="field flex flex-wrap items-center gap-[var(--gap-hair)] py-[0.3rem]">
-      {values.map((value) => (
-        <span
-          key={value}
-          className="inline-flex items-center gap-[0.3rem] rounded-[var(--radius-sharp)] bg-[var(--accent-soft)] px-[0.4rem] py-[0.1rem] text-[var(--text-small)]"
-        >
-          {value}
-          <button
-            type="button"
-            className="text-[var(--ink-faint)] hover:text-[var(--bad)]"
-            onClick={() => onChange(values.filter((item) => item !== value))}
-            aria-label={`Remove ${value}`}
-          >
-            ×
-          </button>
-        </span>
-      ))}
+    <div
+      className="field flex flex-wrap items-center gap-[var(--gap-hair)] py-[0.3rem]"
+      onMouseDown={chips.disarm}
+    >
+      <ChipList
+        values={values}
+        onChange={onChange}
+        duplicate={chips.duplicate}
+        doomed={doomed}
+      />
       <input
         aria-label={ariaLabel}
         className="min-w-[8rem] flex-1 bg-transparent outline-none"
-        value={draft}
+        value={chips.draft}
         placeholder={values.length ? '' : placeholder}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commit}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ',') {
-            event.preventDefault();
-            commit();
-          } else if (event.key === 'Backspace' && !draft && values.length) {
-            onChange(values.slice(0, -1));
-          }
-        }}
+        onChange={(event) => chips.type(event.target.value)}
+        onBlur={chips.blur}
+        onKeyDown={chips.handleKey}
       />
+      <ChipHint duplicate={chips.duplicate} doomed={doomed} />
     </div>
   );
 }

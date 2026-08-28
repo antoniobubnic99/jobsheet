@@ -168,7 +168,7 @@
   },
   "tracker": {
     "title": "Praćenje",
-    "lede": "Povuci karticu da je pomakneš. Svaki je pomak datiran, pa pitanje „kad sam se prijavio?” ima odgovor.",
+    "lede": "Povuci karticu ili koristi strelice iznad stupca. Svaki je pomak datiran, pa pitanje „kad sam se prijavio?” ima odgovor.",
     "empty": "Ovdje još nema ničega.",
     "history": "Povijest",
     "noHistory": "Ovaj se još nije pomaknuo.",
@@ -374,8 +374,7 @@
       "fileName": "Ime datoteke",
       "title": "Gdje neka stoji tvoja tablica?",
       "lede": "Ovo je datoteka koju ćeš stvarno otvarati. Stavi je tamo gdje gledaš -- radna površina je dobar odgovor.",
-      "label": "Radna knjiga",
-      "hint": "Ostavi prazno pa je JobSheet drži uz ostalo. Mora završavati na .xlsx, a mapa mora postojati."
+      "hint": "Ne diraš li ništa, JobSheet drži datoteku uz ostalo. Ime mora završavati na .xlsx."
     },
     "summary": {
       "label": "Dakle, da bude jasno",
