@@ -11,9 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Accounts**
 
-- A username and a password on first run, then a wizard that asks the eight
-  questions the search screen otherwise expects you to already know the answers
-  to. Finishing it lands you on a search that is ready to run.
+- A username and a password on first run, then a wizard that asks the questions
+  the search screen otherwise expects you to already know the answers to.
+  Finishing it lands you on a search that is ready to run.
 - One install can hold several job searches that never see each other. Ads are
   shared between accounts — an ad is an ad whoever found it — while everything a
   person knows or decides about one is theirs: status, notes, saved searches, run
@@ -33,6 +33,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Two ways in from it, "find a job" and "sign in", and the one it offers first
   follows the install.
 
+**The wizard**
+
+- Seven steps, each one question. The keywords step says what a keyword actually
+  matches — the start of a word, not a substring — offers words taken from the
+  headline that you can wave away, and warns rather than refuses when you leave
+  it empty.
+- Croatian places to pick from: 21 counties, 128 towns and 427 municipalities in
+  `jobsheet.data.places_hr`, served by `GET /api/places`. Suggestions only —
+  typing your own still works, because not every source is Croatian. Choosing a
+  county pre-ticks the matching HZZ feed on the sources step.
+- Employers you have already seen, taken from your own rows, offered by
+  `GET /api/postings/companies` and merged through a new `normalize_company`.
+  Naming one as a dream employer raises a flag that writes a star into the note.
+  It never rejects anything.
+- The contract types you want, as tick boxes. An ad that does not say which
+  contract it offers **passes** and carries a flag, because half the sources
+  never say.
+- Sources grouped by country, with "tick all", "Croatia only" and "untick all".
+  Every route carries its default parameters, so HZZ cannot end up selected
+  without the counties it requires.
+- The last step picks the folder with the folder browser and checks the path as
+  you type, instead of failing at the end.
+- A saved search carries a version number and is migrated forward on load, so
+  changing the model no longer breaks every search saved before it.
+
+**A home screen**
+
+- `/` is now a home screen: one large "run the search", a second button to the
+  job list, and a read-only summary of the parameters. The form moved to
+  `/search/edit` unchanged. The summary reads the same saved setup the editor is
+  built from, so the two cannot drift apart.
+
+**Search you can watch**
+
+- A second channel alongside the running log: per-source progress with a phase,
+  a count and a percentage, computed on the server in bands per phase (fetch
+  0–40, filter 40–70, details 70–100), so a source that knows its own size moves
+  inside its band instead of jumping between them.
+- The log moved behind "show details", and a full-width button sits under the
+  bar — including when the search fails, which until now produced no way out.
+- `applications.run_id` (migration 3), `GET /api/postings?run=` and
+  `GET /api/postings/runs`: two searches on the same morning can now be told
+  apart, which `found_at` — a date — could not do.
+
+**Results as sifting**
+
+- A source column, and status off the row: an undecided ad offers Keep or
+  Discard, a decided one states its status as a fact. Status is set in tracking
+  from now on.
+- Once the page is sifted, "continue to tracking" appears.
+
+**Never the same job twice**
+
+- Discarded ads stay in the database, where de-duplication finds them.
+- A `forgotten` table: deleting an ad used to leave it free to return on the
+  next search, which looked exactly like deletion not working.
+- A `filtered_out` table: ads the filter rejected were remembered nowhere, so
+  each one was fetched *and enriched* again on every run — one HTTP request per
+  ad, against the same enrichment budget. The memory is tied to a fingerprint of
+  the profile, so changing the search brings those ads back up for decision
+  rather than burying them.
+- `seen_pairs` no longer discards real jobs. The (title, employer) key was
+  seeded from every existing row, so a second "Software Engineer" at the same
+  employer never appeared again — silently, as a duplicate. It now works the way
+  both comments in the code already claimed: rejecting within a run, and merely
+  flagging across runs.
+- An ad with no URL is reported as `no_url` instead of being counted a duplicate.
+
+**Tracking**
+
+- A profile menu in the bar at every width: who is signed in, my search,
+  settings, and a sign-out that asks first. Below 768px the app used to say
+  neither who was signed in nor how to leave — on a machine that can hold
+  several separate job searches.
+- A card is dragged from anywhere on it, not by a two-pixel handle. A click
+  anywhere opens the details; 5px separates a click from a drag. The details
+  dialog gained what it was missing: status, the link to the ad, the covering
+  letter and Discard.
+- Arrows above each column send the top card to the neighbouring column, off at
+  the edges. The board scrolls sideways, so dragging between columns on a phone
+  meant dragging a card past the edge of the screen and hoping the board would
+  follow. It will not.
+- The workbook path can be changed from settings, with a folder browser and a
+  "move the existing spreadsheet there" tick box, which is on by default —
+  without it you keep opening the old file while JobSheet writes elsewhere. The
+  server refuses to move onto something that already exists, or while the file
+  is open in Excel, and records the new path only after the move succeeded.
+
 ### Changed
 
 - `Database.known_keys()` now means "the ads this account tracks" rather than
@@ -41,6 +129,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Upgrading a database written before accounts hands everything in it to a
   passwordless account, which the sign-in screen offers to claim. No data moves
   and no workbook path changes.
+- "Skipped" is now "Discarded", and sits first on the board rather than beside
+  "Rejected" — being rejected is the employer saying no, discarding is you. The
+  status value, its colour token and the spreadsheet rule are untouched; only
+  the label changed. The board also draws the order the server sends, so that
+  order no longer lives in two places.
+- Screen numbering comes from one place, so the bar and the screen title cannot
+  disagree, and a screen outside the bar has no number instead of borrowing one
+  that belongs to another.
+
+### Fixed
+
+- The wizard no longer vanishes when the gate re-renders. Four screens of typing
+  went with it; the draft is now kept per account in `sessionStorage` and
+  cleared on a successful finish.
+- A duplicate no longer eats what you typed in a chip field: the text stays and
+  the existing chip is briefly marked. Backspace now takes two presses — the
+  first marks the last chip, the second deletes it.
+- A source with nothing to enrich no longer reports 100% under a label saying
+  details are being checked. Only sources with pages to open enter that phase.
+- The folder browser survives a response that carries no folder list, which took
+  the whole page down with it.
+- The "sign in" button no longer appears and then disappears on a fresh install:
+  the page waits for the door to answer instead of guessing.
 
 ## [0.1.0] — unreleased
 
