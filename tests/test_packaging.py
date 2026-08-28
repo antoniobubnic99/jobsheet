@@ -140,3 +140,45 @@ def test_sdist_carries_the_interface(sdist_contents: set[str]) -> None:
     """An sdist without the frontend builds a wheel without the frontend."""
     assert f"{SDIST_PREFIX}/{ENTRY_POINT}" in sdist_contents
     assert _frontend_files(SDIST_PREFIX) <= sdist_contents
+
+
+# --- The version has to be one number, not two -------------------------------
+#
+# `pyproject.toml` is what the wheel is named after, and `release.yml` refuses
+# to publish when the tag disagrees with it. But nothing was comparing either of
+# them to `jobsheet.__version__`, which is typed out separately and is what the
+# CLI's `--version`, `/api/health` and the outgoing User-Agent actually report.
+# Bump one and forget the other and the release is a wheel called 0.1.0 that
+# introduces itself as 0.1.0.dev0 everywhere it goes -- and no step of the
+# release says a word about it.
+#
+# This lives in this file on purpose: `release.yml` runs *this file* before it
+# publishes anything, so a mismatch stops the release rather than shipping.
+
+
+def _declared_version() -> str:
+    """The version in `pyproject.toml` -- the one the wheel is named after."""
+    import tomllib
+
+    pyproject = PROJECT_ROOT / "pyproject.toml"
+    if not pyproject.is_file():
+        _missing(f"no pyproject.toml at {PROJECT_ROOT} -- run the tests from a source checkout")
+    with pyproject.open("rb") as handle:
+        version: str = tomllib.load(handle)["project"]["version"]
+    return version
+
+
+def test_the_package_reports_the_version_it_was_built_with() -> None:
+    declared = _declared_version()
+    assert jobsheet.__version__ == declared, (
+        f"jobsheet.__version__ is {jobsheet.__version__!r} but pyproject.toml says "
+        f"{declared!r} -- both have to be changed, they are typed out separately"
+    )
+
+
+def test_the_wheel_is_named_after_that_same_version(wheel_contents: set[str]) -> None:
+    """Belt and braces: prove it from the built artifact, not just the source."""
+    expected = f"jobsheet-{_declared_version()}.dist-info/METADATA"
+    assert expected in wheel_contents, (
+        f"no {expected} in the wheel -- built version and declared version disagree"
+    )
