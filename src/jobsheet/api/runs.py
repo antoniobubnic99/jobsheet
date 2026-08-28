@@ -18,6 +18,7 @@ belongs to and the database handle to write itself into; `UserRuns` in
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import suppress
@@ -26,9 +27,10 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from jobsheet.core.matching import SearchProfile
+from jobsheet.core.matching import SearchProfile, profile_key
 from jobsheet.pipeline import RunReport, SourceRequest, run_search
 from jobsheet.sheet.row import JobRow
+from jobsheet.sources.base import Phase, percent_for
 from jobsheet.store.db import Database
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -64,8 +66,18 @@ class SearchRun:
     db: Database = field(repr=False)
     phase: RunPhase = RunPhase.RUNNING
     lines: list[str] = field(default_factory=list)
+
+    # The other half of the commentary: how far each source has got, as numbers
+    # a bar can be drawn from. Kept beside the prose rather than parsed out of
+    # it, because a log line is written for a person and reformatting it would
+    # break the display.
+    state: dict[str, dict[str, Any]] = field(default_factory=dict)
+
     report: RunReport | None = None
     error: str = ""
+    # Which row in the `runs` table this became, once it finished. It is what
+    # the results screen filters by when the user asks for one search's ads.
+    recorded_id: str = ""
     task: asyncio.Task[None] | None = field(default=None, repr=False)
     _listeners: list[asyncio.Queue[Any]] = field(default_factory=list, repr=False)
 
@@ -73,22 +85,48 @@ class SearchRun:
     def finished(self) -> bool:
         return self.phase is not RunPhase.RUNNING
 
+    def _emit(self, event: tuple[str, str]) -> None:
+        for queue in self._listeners:
+            queue.put_nowait(event)
+
     def note(self, message: str) -> None:
         """Record one line of commentary and hand it to everyone listening."""
         self.lines.append(message)
-        for queue in self._listeners:
-            queue.put_nowait(message)
+        self._emit(("progress", message))
+
+    def step(self, source_id: str, phase: str, done: int = 0, total: int = 0) -> None:
+        """Record how far one source has got, and hand that on too."""
+        before = self.state.get(source_id, {})
+        entry = {
+            "source_id": source_id,
+            "phase": phase,
+            "done": done,
+            "total": total,
+            "percent": percent_for(
+                phase, done, total, previous=int(before.get("percent", 0))
+            ),
+        }
+        self.state[source_id] = entry
+        self._emit(("state", json.dumps(entry)))
 
     def _close(self) -> None:
         for queue in self._listeners:
             queue.put_nowait(_SENTINEL)
         self._listeners.clear()
 
-    async def listen(self) -> AsyncIterator[str]:
-        """Every line this run has said, then every line it says next."""
+    async def listen(self) -> AsyncIterator[tuple[str, str]]:
+        """Everything this run has said, then everything it says next.
+
+        Both channels replay, and they have to replay differently. The prose is
+        a history, so all of it goes; the bars are a position, so only where
+        each source is *now* goes. A page reloaded mid-search must not come back
+        to empty bars, which is the whole reason the backlog exists.
+        """
         queue: asyncio.Queue[Any] = asyncio.Queue()
         for line in self.lines:
-            queue.put_nowait(line)
+            queue.put_nowait(("progress", line))
+        for entry in self.state.values():
+            queue.put_nowait(("state", json.dumps(entry)))
         if self.finished:
             queue.put_nowait(_SENTINEL)
         else:
@@ -113,6 +151,8 @@ class SearchRun:
             "started_at": self.started_at.isoformat(timespec="seconds"),
             "sources": [request.source_id for request in self.requests],
             "lines": list(self.lines),
+            "state": {key: dict(value) for key, value in self.state.items()},
+            "run_id": self.recorded_id,
             "error": self.error,
             "fetched": report.fetched if report else 0,
             "duplicates": report.duplicates if report else 0,
@@ -162,6 +202,11 @@ class RunManager:
         self._runs[run.id] = run
         self._forget_old()
 
+        # A row per source before anything has happened, so the interface can
+        # draw the whole list at once rather than growing it as sources report.
+        for request in run.requests:
+            run.step(request.source_id, Phase.WAITING)
+
         run.task = asyncio.create_task(
             self._drive(
                 run,
@@ -187,16 +232,25 @@ class RunManager:
         max_items: int,
         max_enrich: int,
     ) -> None:
+        # What "already seen" means for this account, worked out before the run
+        # so the pipeline never touches the database itself. The filtered-out
+        # memory is scoped to the search that produced it: change what you are
+        # looking for and the ads it turned away get another hearing, which is
+        # the difference between remembering a decision and burying an ad.
+        key = profile_key(profile)
         try:
             report = await run_search(
                 run.requests,
                 profile,
                 existing=run.db.all_rows(),
+                forgotten=run.db.forgotten_keys(),
+                filtered_before=run.db.filtered_out_keys(key),
                 http=self.state.http,
                 today=today,
                 max_items=max_items,
                 max_enrich=max_enrich,
                 on_progress=run.note,
+                on_step=run.step,
             )
         except asyncio.CancelledError:
             run.phase = RunPhase.CANCELLED
@@ -210,22 +264,30 @@ class RunManager:
             run._close()
             return
 
-        self._record(run, report)
+        self._record(run, report, profile_key=key)
         run.phase = RunPhase.DONE
         run.report = report
         run.note(f"Saved {len(report.rows)} new job(s).")
         run._close()
 
-    def _record(self, run: SearchRun, report: RunReport) -> None:
+    def _record(self, run: SearchRun, report: RunReport, *, profile_key: str) -> None:
         """Everything a finished search leaves behind on disk."""
-        run.db.save_rows(report.rows)
-        run.db.record_run(
+        # The run row comes first, because its id is what stamps the ads. That
+        # stamp is the only way to tell this morning's search from this
+        # afternoon's: `found_at` is a date, and both happened today.
+        recorded = run.db.record_run(
             fetched=report.fetched,
             added=report.new_count,
             duplicates=report.duplicates,
             rejected=len(report.rejected),
             errors=report.errors,
             started_at=run.started_at,
+        )
+        run.recorded_id = str(recorded)
+        run.db.save_rows(report.rows, run_id=run.recorded_id)
+        run.db.remember_filtered(
+            [(posting.dedup_key, rejection.code) for posting, rejection in report.rejected],
+            profile_key=profile_key,
         )
         for request in run.requests:
             source_id = request.source_id

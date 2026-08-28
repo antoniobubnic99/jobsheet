@@ -14,13 +14,19 @@ export type ApplicationStatus =
   | 'rejected'
   | 'skipped';
 
+/**
+ * Left to right on the board -- and only a fallback: the server sends its own
+ * order with the board, and that is the one drawn. This is what the interface
+ * uses before the first answer arrives, and to know which strings are statuses
+ * at all. See `jobsheet.store.tracker.BOARD_ORDER` for why `skipped` leads.
+ */
 export const BOARD_ORDER: ApplicationStatus[] = [
+  'skipped',
   'new',
   'applied',
   'interview',
   'offer',
   'rejected',
-  'skipped',
 ];
 
 export type ColumnKind =
@@ -114,6 +120,10 @@ export interface SearchProfile {
   excluded_employers: string[];
   excluded_employment_types: string[];
   excluded_schedules: string[];
+  /** The contracts wanted, said the positive way round. Empty means no opinion. */
+  wanted_employment_types: string[];
+  /** Employers worth reading first. These mark a row; they never filter one. */
+  dream_employers: string[];
   employment_type_allowlist: string[];
   description_match_requires: string[];
   flags: Record<string, string[]>;
@@ -128,10 +138,36 @@ export const EMPTY_PROFILE: SearchProfile = {
   excluded_employers: [],
   excluded_employment_types: [],
   excluded_schedules: [],
+  wanted_employment_types: [],
+  dream_employers: [],
   employment_type_allowlist: [],
   description_match_requires: [],
   flags: {},
 };
+
+/* ------------------------------------------------- what the wizard suggests */
+
+/** One place the wizard can offer. `feed` is the HZZ feed a county would search. */
+export interface Place {
+  name: string;
+  kind: 'city' | 'municipality' | 'county';
+  /** The county it sits in, or empty when the name belongs to two of them. */
+  county: string;
+  feed: number | null;
+}
+
+export interface PlaceSuggestions {
+  places: Place[];
+  /** All twenty-one, every time: the picker draws them the moment it is focused. */
+  counties: { name: string; feed: number }[];
+}
+
+/** An employer this account has already collected ads from. */
+export interface SeenCompany {
+  name: string;
+  normalized: string;
+  count: number;
+}
 
 /* -------------------------------------------------------------------- who */
 
@@ -182,12 +218,44 @@ export const EMPTY_SETUP: SearchSetup = {
 
 export type RunPhase = 'running' | 'done' | 'failed' | 'cancelled';
 
+/** How far one source has got. The bars are drawn from this, never from the log. */
+export type SourcePhase =
+  | 'waiting'
+  | 'fetching'
+  | 'filtering'
+  | 'details'
+  | 'done'
+  | 'failed';
+
+export interface SourceProgress {
+  source_id: string;
+  phase: SourcePhase;
+  done: number;
+  total: number;
+  /** 0-100, worked out on the server so one definition serves every client. */
+  percent: number;
+}
+
+/** One past search as the database recorded it. Outlives the process. */
+export interface DbRun {
+  id: number;
+  started_at: string;
+  finished_at: string | null;
+  fetched: number;
+  added: number;
+  duplicates: number;
+  rejected: number;
+}
+
 export interface RunSummary {
   id: string;
   phase: RunPhase;
   started_at: string;
   sources: string[];
   lines: string[];
+  state: Record<string, SourceProgress>;
+  /** The `runs` row this became, once finished. Empty while it is still going. */
+  run_id: string;
   error: string;
   fetched: number;
   duplicates: number;
@@ -287,6 +355,34 @@ export interface AppSettings {
   backups: string;
   keep_backups: number;
   sources_installed: number;
+}
+
+export interface Folder {
+  name: string;
+  path: string;
+}
+
+/** One folder, seen from the picker: where it is, what is under it, where else to go. */
+export interface FolderListing {
+  path: string;
+  /** `null` at a drive root, where there is no walking up. */
+  parent: string | null;
+  home: string;
+  jobsheet_home: string;
+  /** Drive letters on Windows, `/` elsewhere -- the picker's way sideways. */
+  roots: Folder[];
+  writable: boolean;
+  folders: Folder[];
+  /** Set when the listing was truncated or the folder could not be opened. */
+  message: string;
+}
+
+/** What changing the workbook path answered with, including whether it moved. */
+export interface WorkbookChange {
+  workbook: string;
+  workbook_exists: boolean;
+  workbook_locked: boolean;
+  moved: boolean;
 }
 
 export interface WorkbookState {

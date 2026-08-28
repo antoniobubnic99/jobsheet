@@ -19,6 +19,7 @@ import abc
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
+from enum import StrEnum
 from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -26,7 +27,59 @@ from pydantic import BaseModel, ConfigDict, Field
 from jobsheet.core.http import HttpClient
 from jobsheet.core.models import Posting
 
-__all__ = ["Choice", "FetchContext", "ParamSpec", "Source", "SourceError", "SourceManifest"]
+__all__ = [
+    "PHASE_BANDS",
+    "Choice",
+    "FetchContext",
+    "ParamSpec",
+    "Phase",
+    "Source",
+    "SourceError",
+    "SourceManifest",
+    "percent_for",
+]
+
+
+class Phase(StrEnum):
+    """Where one source has got to, as a word rather than a sentence.
+
+    The running commentary is prose and always will be -- it is what a person
+    reads when they want to know *what* is happening. This is the other half of
+    the same question, "how far along", and it has to be a number because that
+    is the only thing a progress bar can draw.
+    """
+
+    WAITING = "waiting"
+    FETCHING = "fetching"
+    FILTERING = "filtering"
+    DETAILS = "details"
+    DONE = "done"
+    FAILED = "failed"
+
+
+# What fraction of the work each phase spans. A source that only knows which
+# phase it is in lands on the top of its band; one that also knows "county 2 of
+# 5" lands proportionally inside it. Fetching is the slow part in wall-clock
+# terms, which is why it gets the widest band.
+PHASE_BANDS: dict[str, tuple[int, int]] = {
+    Phase.WAITING: (0, 0),
+    Phase.FETCHING: (0, 40),
+    Phase.FILTERING: (40, 70),
+    Phase.DETAILS: (70, 100),
+    Phase.DONE: (100, 100),
+}
+
+
+def percent_for(phase: str, done: int, total: int, *, previous: int = 0) -> int:
+    """How full the bar is. A failure freezes it where it got to rather than
+    jumping to a number that would read as progress."""
+    if phase == Phase.FAILED:
+        return previous
+    low, high = PHASE_BANDS.get(phase, (0, 0))
+    if total > 0:
+        share = min(max(done / total, 0.0), 1.0)
+        return int(low + (high - low) * share)
+    return high
 
 
 class SourceError(RuntimeError):
@@ -116,8 +169,20 @@ class FetchContext:
     # Progress reporting. The web interface streams these lines live.
     on_progress: Callable[[str], None] = lambda message: None
 
+    # The same progress as a position rather than a sentence: which source, what
+    # it is doing, how far into it. The pipeline drives this for every source it
+    # runs, so a connector needs no code at all to get a bar. A source that
+    # knows its own shape -- one feed per county, say -- calls `step` to say so,
+    # and the bar moves inside the phase instead of jumping between phases.
+    on_step: Callable[[str, str, int, int], None] = (
+        lambda source_id, phase, done, total: None
+    )
+
     def report(self, message: str) -> None:
         self.on_progress(message)
+
+    def step(self, source_id: str, phase: str, done: int = 0, total: int = 0) -> None:
+        self.on_step(source_id, phase, done, total)
 
 
 class Source(abc.ABC):

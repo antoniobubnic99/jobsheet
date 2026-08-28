@@ -13,11 +13,24 @@ from typing import Any, ClassVar
 import pytest
 
 from jobsheet.core.matching import KeywordGroup, SearchProfile
-from jobsheet.core.models import Posting
-from jobsheet.pipeline import RunReport, SourceRequest, build_note, run_search
+from jobsheet.core.models import ApplicationStatus, Posting
+from jobsheet.pipeline import (
+    DUPLICATE_HINT,
+    RunReport,
+    SourceRequest,
+    build_note,
+    run_search,
+)
 from jobsheet.sheet.row import JobRow
 from jobsheet.sources import registry
-from jobsheet.sources.base import FetchContext, Source, SourceManifest
+from jobsheet.sources.base import (
+    PHASE_BANDS,
+    FetchContext,
+    Phase,
+    Source,
+    SourceManifest,
+    percent_for,
+)
 
 TODAY = date(2026, 8, 24)
 
@@ -230,3 +243,158 @@ class TestBuildNote:
         hit = run_match(posting, profile)
         assert hit is not None
         assert "mentions German" in build_note(posting, hit, profile, today=TODAY)
+
+    def test_a_dream_employer_reaches_the_row(self) -> None:
+        """The whole value of the star is that it is visible in the spreadsheet.
+
+        Built with the model rather than `model_copy(update=...)`, which does not
+        validate -- a field name typed wrong there fails as "the flag did not
+        appear" rather than as the `ValidationError` it actually is.
+        """
+        profile = SearchProfile(
+            keyword_groups=[KeywordGroup(name="GIS", terms=["gis"])],
+            dream_employers=["Company 1"],
+        )
+        posting = ad(1, company="COMPANY 1 d.o.o.")
+        from jobsheet.core.matching import DREAM_FLAG
+        from jobsheet.core.matching import match as run_match
+
+        hit = run_match(posting, profile)
+        assert hit is not None
+        assert DREAM_FLAG in build_note(posting, hit, profile, today=TODAY)
+
+    def test_an_unstated_contract_is_said_out_loud_on_the_row(self) -> None:
+        """The other half of `wanted_employment_types`: kept, but marked."""
+        profile = SearchProfile(
+            keyword_groups=[KeywordGroup(name="GIS", terms=["gis"])],
+            wanted_employment_types=["neodređeno"],
+        )
+        posting = ad(1, employment_type="")
+        from jobsheet.core.matching import UNSTATED_CONTRACT_FLAG
+        from jobsheet.core.matching import match as run_match
+
+        hit = run_match(posting, profile)
+        assert hit is not None
+        assert UNSTATED_CONTRACT_FLAG in build_note(posting, hit, profile, today=TODAY)
+
+
+class TestNeverTwice:
+    """The five ways the same job used to come back. Each one, once.
+
+    Every case here is a complaint a user actually made: "I keep seeing this
+    one". They are separate tests because they are five separate holes, and a
+    single test that happened to cover all five would go green again the moment
+    four of them were reopened.
+    """
+
+    async def test_an_ad_the_user_skipped_is_not_offered_again(self) -> None:
+        """`skipped` is a decision, not a deletion. The row stays and dedups."""
+        skipped = JobRow(posting=ad(1), found_at=TODAY, status=ApplicationStatus.SKIPPED)
+        FakeSource.postings = [ad(1)]
+        report = await search(existing=[skipped])
+        assert report.new_count == 0
+        assert report.duplicates == 1
+
+    async def test_a_deleted_ad_does_not_come_back(self) -> None:
+        """Deleting removes the row, so only a tombstone can hold the line."""
+        FakeSource.postings = [ad(1)]
+        report = await search(existing=[], forgotten={ad(1).dedup_key})
+        assert report.new_count == 0
+        assert report.duplicates == 1
+
+    async def test_an_ad_already_filtered_out_is_not_enriched_again(self) -> None:
+        """The point is the request not made, so that is what is asserted."""
+        EnrichingSource.postings = [ad(1, source_id="enriching")]
+        report = await run_search(
+            [SourceRequest("enriching")],
+            GIS,
+            today=TODAY,
+            filtered_before={ad(1).dedup_key},
+        )
+        assert EnrichingSource.enrich_calls == 0
+        assert report.new_count == 0
+        assert report.rejected[0][1].code == "filtered_out_before"
+
+    async def test_an_ad_with_no_link_is_refused_not_called_a_duplicate(self) -> None:
+        FakeSource.postings = [ad(1, url="")]
+        report = await search()
+        assert report.duplicates == 0
+        assert report.rejected[0][1].code == "no_url"
+
+    async def test_two_real_jobs_with_one_title_survive_two_searches(self) -> None:
+        """The bug this exists for: the second "Software Engineer" at one
+        employer was dropped for ever, silently, as a duplicate ad number."""
+        first = ad(1, title="Software Engineer", company="Acme", description="gis")
+        second = ad(2, title="Software Engineer", company="Acme", description="gis")
+
+        FakeSource.postings = [first]
+        one = await search()
+        assert one.new_count == 1
+
+        # Second search, a month later. Different ad, same title, same employer.
+        FakeSource.postings = [second]
+        two = await search(existing=one.rows)
+        assert two.new_count == 1, "a genuine second opening must still arrive"
+        assert DUPLICATE_HINT in two.rows[0].note, "and it must say why it looks familiar"
+
+    async def test_the_hint_is_a_remark_and_not_a_rejection(self) -> None:
+        """The user decides. A pair match across runs marks; it never removes."""
+        existing = [JobRow(posting=ad(1, title="GIS Engineer", company="Acme"), found_at=TODAY)]
+        FakeSource.postings = [ad(2, title="GIS Engineer", company="Acme")]
+        report = await search(existing=existing)
+        assert report.rejected == []
+        assert report.new_count == 1
+
+    async def test_one_vacancy_under_two_numbers_is_still_caught_in_one_run(self) -> None:
+        """The other half: within a run the pair key is trustworthy, and stays used."""
+        FakeSource.postings = [
+            ad(1, title="GIS Engineer", company="City"),
+            ad(2, title="GIS Engineer", company="City"),
+        ]
+        report = await search()
+        assert report.new_count == 1
+        assert report.rejected[0][1].code == "duplicate_of_another_ad"
+
+
+class TestProgressPerSource:
+    """The bars, which are a second channel beside the prose -- not parsed from it."""
+
+    async def test_each_source_reports_a_phase_and_a_percentage(self) -> None:
+        steps: list[tuple[str, str, int, int]] = []
+        FakeSource.postings = [ad(1)]
+        await search(on_step=lambda *args: steps.append(args))
+
+        assert [s for s in steps if s[1] == Phase.FETCHING]
+        assert [s for s in steps if s[1] == Phase.DONE]
+        assert {s[0] for s in steps} == {"fake"}
+
+    async def test_a_failed_source_stops_rather_than_finishing(self) -> None:
+        """A bar that ran to 100% would say the source succeeded."""
+        steps: list[tuple[str, str, int, int]] = []
+        await run_search(
+            [SourceRequest("broken")], GIS, today=TODAY, on_step=lambda *a: steps.append(a)
+        )
+        assert steps[-1][1] == Phase.FAILED
+        assert Phase.DONE not in {phase for _, phase, _, _ in steps}
+
+    async def test_a_percentage_only_ever_moves_forward_through_the_phases(self) -> None:
+        FakeSource.postings = [ad(1)]
+        seen: list[int] = []
+        await search(
+            on_step=lambda source, phase, done, total: seen.append(
+                percent_for(phase, done, total)
+            )
+        )
+        assert seen == sorted(seen)
+        assert seen[-1] == 100
+
+    def test_a_source_that_knows_its_own_size_lands_inside_the_phase(self) -> None:
+        """Two counties of five is partway through fetching, not partway through
+        the whole run."""
+        low, high = PHASE_BANDS[Phase.FETCHING]
+        assert percent_for(Phase.FETCHING, 0, 5) == low
+        assert percent_for(Phase.FETCHING, 5, 5) == high
+        assert low < percent_for(Phase.FETCHING, 2, 5) < high
+
+    def test_a_failure_freezes_the_bar_where_it_got_to(self) -> None:
+        assert percent_for(Phase.FAILED, 0, 0, previous=37) == 37

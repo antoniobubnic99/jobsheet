@@ -390,3 +390,89 @@ class TestLifecycle:
         with Database(path) as second:
             (restored,) = second.all_rows()
             assert restored.status is ApplicationStatus.APPLIED
+
+
+class TestWhichSearchFoundIt:
+    """`found_at` is a date, so it cannot separate two searches on one morning."""
+
+    def test_a_row_remembers_the_run_that_found_it(self, db: Database) -> None:
+        db.save_rows([job(1)], run_id="7")
+        assert db.rows(run="7") != []
+        assert db.rows(run="8") == []
+
+    def test_the_filter_counts_what_matches_not_what_was_loaded(
+        self, db: Database
+    ) -> None:
+        db.save_rows([job(1), job(2)], run_id="7")
+        db.save_rows([job(3)], run_id="8")
+        assert db.count_rows(run="7") == 2
+        assert db.count_rows(run="8") == 1
+        assert db.count_rows() == 3
+
+    def test_seeing_an_ad_again_does_not_move_it_to_the_later_search(
+        self, db: Database
+    ) -> None:
+        """The stamp says which search *found* it. A second sighting is not that."""
+        db.save_rows([job(1)], run_id="7")
+        db.save_rows([job(1)], run_id="8")
+        assert db.count_rows(run="7") == 1
+        assert db.count_rows(run="8") == 0
+
+    def test_rows_from_before_the_column_existed_are_not_lost(
+        self, db: Database
+    ) -> None:
+        """An unstamped row belongs to no run, but still belongs to the user."""
+        db.save_rows([job(1)])
+        assert db.count_rows() == 1
+        assert db.count_rows(run="7") == 0
+
+
+class TestNotBringingItBack:
+    """Two memories, because they record two different decisions."""
+
+    def test_deleting_a_job_leaves_a_tombstone(self, db: Database) -> None:
+        db.save_rows([job(1)])
+        key = job(1).dedup_key
+        assert db.delete_row(key)
+        assert db.row(key) is None
+        assert key in db.forgotten_keys()
+
+    def test_one_account_deleting_does_not_speak_for_another(
+        self, db: Database
+    ) -> None:
+        store = UserStore(db)
+        ana = store.create("ana", "a-good-password")
+        ivo = store.create("ivo", "a-good-password")
+        hers, his = db.as_user(ana.id), db.as_user(ivo.id)
+
+        hers.save_rows([job(1)])
+        his.save_rows([job(1)])
+        hers.delete_row(job(1).dedup_key)
+
+        assert hers.forgotten_keys() == {job(1).dedup_key}
+        assert his.forgotten_keys() == set()
+
+    def test_a_filtered_ad_is_remembered_against_the_search_that_refused_it(
+        self, db: Database
+    ) -> None:
+        db.remember_filtered([("example.test/j/1", "deadline_passed")], profile_key="abc")
+        assert db.filtered_out_keys("abc") == {"example.test/j/1"}
+
+    def test_changing_the_search_gives_a_refused_ad_another_hearing(
+        self, db: Database
+    ) -> None:
+        """The decision belonged to one search. It must not outlive it."""
+        db.remember_filtered([("example.test/j/1", "employment_type")], profile_key="abc")
+        assert db.filtered_out_keys("xyz") == set()
+
+    def test_refusing_the_same_ad_twice_updates_rather_than_raises(
+        self, db: Database
+    ) -> None:
+        db.remember_filtered([("example.test/j/1", "too_old")], profile_key="abc")
+        db.remember_filtered([("example.test/j/1", "deadline_passed")], profile_key="abc")
+        assert db.filtered_out_keys("abc") == {"example.test/j/1"}
+
+    def test_an_ad_with_no_key_is_not_remembered(self, db: Database) -> None:
+        """Nothing can be addressed by an empty key, so nothing should be stored."""
+        db.remember_filtered([("", "no_url")], profile_key="abc")
+        assert db.filtered_out_keys("abc") == set()

@@ -528,6 +528,31 @@ class TestUpgradingAnOldInstall:
             assert UserStore(db).count() == 0
             assert UserStore(db).claimable() is None
 
+    def test_the_run_stamp_and_the_two_memories_arrive_on_a_file_with_data(
+        self, tmp_path: Path
+    ) -> None:
+        """Migration 3 against a real old file, not an empty one.
+
+        A migration that only ever runs on a fresh database is a migration that
+        has not been tested. This one adds a column to a table that already has
+        somebody's applications in it.
+        """
+        path = tmp_path / "jobsheet.sqlite3"
+        _a_version_one_database(path)
+
+        with Database(path) as db:
+            # The row that predates the column is still there, and belongs to
+            # no run -- which is the truth about it.
+            (row,) = db.all_rows()
+            assert db.count_rows() == 1
+            assert db.count_rows(run="1") == 0
+
+            # And both memories work on the upgraded file.
+            db.remember_filtered([("example.test/j/9", "too_old")], profile_key="abc")
+            assert db.filtered_out_keys("abc") == {"example.test/j/9"}
+            assert db.delete_row(row.dedup_key)
+            assert row.dedup_key in db.forgotten_keys()
+
 
 # ----------------------------------------------------------------- endpoints
 

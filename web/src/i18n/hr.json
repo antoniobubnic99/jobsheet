@@ -1,7 +1,8 @@
 {
   "app": {
     "name": "JobSheet",
-    "tagline": "Skupi oglase za posao odasvud. Dobij tablicu koja je stvarno tvoja."
+    "tagline": "Skupi oglase za posao odasvud. Dobij tablicu koja je stvarno tvoja.",
+    "skipToContent": "Prijeđi na sadržaj"
   },
   "nav": {
     "search": "Pretraga",
@@ -13,7 +14,9 @@
     "resultsHint": "Što je stiglo i zašto",
     "designerHint": "Tvoji stupci, tvoje boje",
     "trackerHint": "Gdje je koja prijava",
-    "settingsHint": "Putanje, sigurnosne kopije, jezik"
+    "settingsHint": "Putanje, sigurnosne kopije, jezik",
+    "searchEdit": "Uredi pretragu",
+    "searchEditHint": "Izvori, riječi, filtri"
   },
   "common": {
     "loading": "Učitavam…",
@@ -34,7 +37,11 @@
     "themeLight": "Svijetla",
     "themeDark": "Tamna",
     "themeSystem": "Kao sustav",
-    "copied": "Kopirano"
+    "copied": "Kopirano",
+    "remove": "Makni {{value}}",
+    "alreadyThere": "„{{value}}” je već na popisu.",
+    "backspaceAgain": "Još jednom Backspace da makneš „{{value}}”.",
+    "orTypeYourOwn": "… ili upiši svoje"
   },
   "search": {
     "title": "Pretraga",
@@ -76,7 +83,20 @@
     "seeResults": "Pogledaj što je našla",
     "healthOk": "Zadnji put radio {{when}}",
     "healthBad": "Zadnji put pao {{when}}",
-    "healthUnknown": "Još nije pokušano"
+    "healthUnknown": "Još nije pokušano",
+    "showDetails": "Prikaži detalje",
+    "seeWhatArrived": "Pogledaj što je stiglo",
+    "seeResultsCount_one": "Pregledaj rezultate ({{count}} novi oglas)",
+    "seeResultsCount_few": "Pregledaj rezultate ({{count}} nova oglasa)",
+    "seeResultsCount_other": "Pregledaj rezultate ({{count}} novih oglasa)",
+    "phase": {
+      "waiting": "čeka",
+      "fetching": "dohvaćam",
+      "filtering": "filtriram",
+      "details": "provjeravam detalje",
+      "done": "gotovo",
+      "failed": "palo"
+    }
   },
   "results": {
     "title": "Rezultati",
@@ -101,7 +121,13 @@
     "next": "Sljedeće",
     "turnedAway": "Odbačeno",
     "turnedAwayLede": "Oglasi koji su se poklopili s tvojim riječima, ali ih je maknulo neko pravilo. Prikazani su da vidiš koje.",
-    "letter": "Skiciraj zamolbu"
+    "letter": "Zamolba za posao",
+    "keep": "Zadrži posao",
+    "discard": "Odbaci posao",
+    "continueToTracker": "Nastavi na praćenje",
+    "whichSearch": "Koja pretraga",
+    "allSearches": "Sve pretrage",
+    "latestSearch": "Zadnja"
   },
   "designer": {
     "title": "Uređivač tablice",
@@ -147,7 +173,12 @@
     "history": "Povijest",
     "noHistory": "Ovaj se još nije pomaknuo.",
     "moved": "{{from}} → {{to}}",
-    "dropHere": "Pusti ovdje"
+    "dropHere": "Pusti ovdje",
+    "boardEmpty": "Još nema što pratiti. Pokreni pretragu pa zadrži ono što vrijedi.",
+    "openHint": "Otvori pojedinosti",
+    "discard": "Odbaci",
+    "moveTopTo": "Premjesti {{title}} u {{column}}",
+    "cannotMove": "Nema što premjestiti"
   },
   "status": {
     "new": "Novo",
@@ -155,7 +186,7 @@
     "interview": "Razgovor",
     "offer": "Ponuda",
     "rejected": "Odbijeno",
-    "skipped": "Preskočeno"
+    "skipped": "Odbačeno"
   },
   "settings": {
     "title": "Postavke",
@@ -179,10 +210,22 @@
     "sourcesLede": "Tuđi se endpointi mijenjaju bez najave. Ovo je zadnje što je svaki od njih stvarno napravio.",
     "never": "Nije pokretano",
     "fairPlay": "Samo javni podaci",
-    "fairPlayText": "JobSheet čita javne feedove i javne API-je, poštuje robots.txt, sam se ograničava po brzini i pošteno se predstavlja. Nigdje se ne prijavljuje i ne dira ništa iza prijave."
+    "fairPlayText": "JobSheet čita javne feedove i javne API-je, poštuje robots.txt, sam se ograničava po brzini i pošteno se predstavlja. Nigdje se ne prijavljuje i ne dira ništa iza prijave.",
+    "workbookHint": "Tablica koju otvaraš. Promijeni gdje stoji i povedi je sa sobom.",
+    "changeWorkbook": "Promijeni gdje je",
+    "workbookName": "Ime datoteke",
+    "moveWorkbook": "Premjesti postojeću tablicu na novo mjesto",
+    "moveWorkbookWarning": "Bez ovoga kvačice i bilješke koje si upisao ostaju u staroj tablici. JobSheet će na novoj putanji početi novu.",
+    "workbookMoved": "Premješteno. Tablica i sve u njoj je na novoj putanji.",
+    "workbookPointed": "Gotovo. JobSheet od sada piše na novu putanju.",
+    "folder": "Mapa",
+    "folderUp": "Gore",
+    "folderHome": "Početna",
+    "folderEmpty": "U ovoj mapi nema podmapa.",
+    "folderReadOnly": "U ovu se mapu ne može pisati. Odaberi drugu."
   },
   "letter": {
-    "title": "Zamolba",
+    "title": "Zamolba za posao",
     "lede": "Prva skica, popunjena iz oglasa. JobSheet popunjava mehaničke dijelove; riječi su tvoje.",
     "yourName": "Tvoje ime",
     "yourEmail": "E-mail",
@@ -239,7 +282,11 @@
     "newPassword": "Nova lozinka",
     "passwordChanged": "Promijenjena. Svi prozori su odjavljeni, i ovaj.",
     "account": "Račun",
-    "accountHint": "Prijavljen na ovom računalu. Tvoji redci, tvoja tablica."
+    "accountHint": "Prijavljen na ovom računalu. Tvoji redci, tvoja tablica.",
+    "profile": "Tvoj račun",
+    "mySearch": "Moja pretraga",
+    "mySearchHint": "Što tražiš i gdje",
+    "signOutSure": "Odjaviti se? Oglasi i bilješke ostaju na ovom računalu."
   },
   "welcome": {
     "greeting": "Dobrodošao, {{name}}.",
@@ -257,6 +304,12 @@
     },
     "keywords": {
       "step": "Riječi",
+      "stems": "Riječi su ovdje počeci, ne cijele riječi. Oglas neće pisati geodet nego geodetski tehničar — zato geodet hvata oboje. Tri ili četiri početka obično su dovoljna.",
+      "offer": "Iz „{{headline}}” JobSheet bi probao:",
+      "accept": "Uzmi ove",
+      "result": "Oglasi koji se poklope idu u tablicu pod kategorijom",
+      "noneWarning": "Bez ijedne riječi prolazi svaki oglas sa svakog izvora koji odabereš. To je legitiman izbor — samo obično nije ono što ljudi misle.",
+      "halfTyped": "Skupina koja ima ime, a nema riječi, ne poklapa se ni s čim i neće biti spremljena. Dodaj joj riječ ili je makni.",
       "title": "Koje riječi znače taj posao?",
       "lede": "Oglasi ne pišu tvoj naziv, nego svoj. Grupiraj riječi koje znače isto i daj svakoj skupini ime -- to je kategorija koja završi u tablici. Skupine se provjeravaju redom, a prva koja se poklopi pobjeđuje."
     },
@@ -270,7 +323,8 @@
       "regionsHint": "Za izvore koji navode županiju umjesto mjesta.",
       "regionsPlaceholder": "Primorsko-goranska…",
       "remote": "Riječi koje znače rad na daljinu",
-      "remoteHint": "Oglas koji sadrži nešto od ovoga računa se kao da je kod tebe."
+      "remoteHint": "Oglas koji sadrži nešto od ovoga računa se kao da je kod tebe.",
+      "regionsAreASecondChoice": "Županija se gleda samo kad oglas uopće ne navodi mjesto. Na jednom državnom portalu polje županije nosi sjedište tijela koje je objavilo oglas, a ne mjesto rada — zato mjesto, kad ga ima, odlučuje."
     },
     "freshness": {
       "step": "Starost",
@@ -279,35 +333,45 @@
       "label": "Preskoči oglase starije od",
       "hint": "Trideset dana odgovara većini pretraga. Smanji ako gledaš svaki dan."
     },
-    "no": {
-      "step": "Ne, hvala",
-      "title": "Što ne želiš vidjeti?",
-      "lede": "Sve je ovo neobavezno i sve se poslije može promijeniti.",
-      "employers": "Poslodavci koje preskačeš",
-      "employersHint": "Agencije kojih ti je dosta ili bivši poslodavac.",
-      "types": "Vrste ugovora koje preskačeš",
-      "typesHint": "Uspoređuje se kao obična riječ s onim što oglas piše.",
-      "allowlist": "…osim ako oglas kaže i",
-      "allowlistHint": "Ovo postoji zbog prave zamke: „na neodređeno\" sadrži „određeno\", pa blokada jednog blokira oba. Što god je ovdje, pobjeđuje popis iznad.",
+    "employers": {
+      "step": "Poslodavci",
+      "title": "Kod koga bi radio?",
+      "lede": "Sve je ovo neobavezno i sve se poslije može promijeniti. Počni tipkati i JobSheet nudi poslodavce koje je već vidio u tvojim oglasima.",
+      "dream": "Poslodavci kojima se nadaš",
+      "dreamHint": "Ovo nikad ništa ne izbacuje. Oglas takvog poslodavca dobije ⭐ u retku, pa ga u tablici od devedeset oglasa vidiš prvog.",
+      "skip": "Poslodavci koje preskačeš",
+      "skipHint": "Agencije kojih ti je dosta ili bivši poslodavac.",
+      "seenTimes_one": "{{count}} oglas",
+      "seenTimes_few": "{{count}} oglasa",
+      "seenTimes_other": "{{count}} oglasa",
+      "contracts": "Ugovori koje tražiš",
+      "contractsHint": "Ne označiš li ništa, prolaze sve vrste ugovora — što je za većinu pretraga dobar odgovor. I ovo su počeci riječi, kao i sve ostalo ovdje.",
+      "unstatedArePassed": "Oglas koji ne kaže kakav ugovor nudi svejedno prolazi, ali označen. Pola izvora to nikad ne navodi, pa bi ih odbacivanje koštalo najvećeg dijela pretrage.",
+      "contract": {
+        "neodređeno": "Na neodređeno",
+        "određeno": "Na određeno",
+        "puno_radno_vrijeme": "Puno radno vrijeme",
+        "nepuno_radno_vrijeme": "Nepuno radno vrijeme",
+        "sezonski": "Sezonski",
+        "praksa": "Praksa ili pripravništvo",
+        "ugovor_o_djelu": "Ugovor o djelu",
+        "student": "Studentski posao"
+      },
       "schedules": "Radna vremena koja preskačeš",
       "schedulesHint": "Noćni rad, vikendi, prekinuto radno vrijeme -- što god ne dolazi u obzir."
     },
-    "fine": {
-      "step": "Sitno",
-      "title": "Dva pravila za nezgodne slučajeve",
-      "lede": "Preskoči ako ti ništa od ovoga ne zvuči poznato. Ovo je za drugi mjesec traženja, kad ti isti krivi oglas stalno dolazi.",
-      "evidence": "Riječ u opisu nije dovoljna osim ako",
-      "evidenceHint": "Kad se poklopilo samo u tekstu oglasa, traži da polje o obrazovanju spominje nešto od ovoga. Prazno gasi pravilo.",
-      "flags": "Što vrijedi primijetiti",
-      "flagsHint": "Ovo nikad ne odbacuje oglas, samo ga označi -- uzorak ne zna razliku između tvrdog uvjeta i lijepe želje. Imenuj oznaku pa nabroji riječi koje je dižu."
-    },
     "sources": {
       "step": "Izvori",
+      "all": "Označi sve",
+      "onlyCountry": "Samo {{country}}",
+      "none": "Odznači sve",
       "title": "Gdje neka JobSheet traži?",
       "lede": "Svaki izvor ispod je javni feed ili javni API. Bez računa, bez ključa, ništa iza prijave. Odaberi koliko hoćeš -- dohvaćaju se istovremeno."
     },
     "workbook": {
       "step": "Datoteka",
+      "folder": "Mapa",
+      "fileName": "Ime datoteke",
       "title": "Gdje neka stoji tvoja tablica?",
       "lede": "Ovo je datoteka koju ćeš stvarno otvarati. Stavi je tamo gdje gledaš -- radna površina je dobar odgovor.",
       "label": "Radna knjiga",
@@ -317,11 +381,13 @@
       "label": "Dakle, da bude jasno",
       "looking": "Tražiš",
       "terms": "Riječi",
+      "categories": "Kategorije",
       "where": "Gdje",
       "sources": "Izvori",
       "freshness": "Svježina",
       "anything": "bilo što",
       "anywhere": "bilo gdje",
+      "none": "nijedna — ništa se neće kategorizirati",
       "days_one": "oglasi stari do {{count}} dan",
       "days_few": "oglasi stari do {{count}} dana",
       "days_other": "oglasi stari do {{count}} dana"
@@ -410,5 +476,15 @@
   "error": {
     "title": "Nešto je pošlo po zlu",
     "generic": "Ne mogu doći do JobSheeta."
+  },
+  "home": {
+    "title": "Tvoja pretraga",
+    "lede": "Jedan gumb. Sve što joj treba već si rekao kad si je postavljao.",
+    "today": "Danas",
+    "openList": "Otvori popis poslova",
+    "summary": "Što ova pretraga traži",
+    "edit": "Uredi pretragu",
+    "contracts": "Vrste ugovora",
+    "nothingSetUp": "Ovaj račun još nema spremljenu pretragu."
   }
 }

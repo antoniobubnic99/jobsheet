@@ -10,10 +10,12 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import '@/i18n';
+import HomeScreen from './HomeScreen';
 import ResultsScreen from './ResultsScreen';
 import SearchScreen from './SearchScreen';
 import SettingsScreen from './SettingsScreen';
@@ -125,6 +127,19 @@ const RESPONSES: Record<string, unknown> = {
     ],
   },
   '/api/postings': { total: 1, limit: 100, offset: 0, rows: [ROW] },
+  // Must be listed before the `/api/postings` prefix fallback below, or the
+  // results screen is handed a page object where it expects a list of searches.
+  '/api/postings/runs': [
+    {
+      id: 4,
+      started_at: '2026-08-24T10:15:00',
+      finished_at: '2026-08-24T10:16:00',
+      fetched: 40,
+      added: 34,
+      duplicates: 6,
+      rejected: 0,
+    },
+  ],
   '/api/applications/board': {
     order: ['new', 'applied', 'interview', 'offer', 'rejected', 'skipped'],
     counts: { new: 1, applied: 0, interview: 0, offer: 0, rejected: 0, skipped: 0 },
@@ -192,6 +207,8 @@ const RESPONSES: Record<string, unknown> = {
         excluded_employers: [],
         excluded_employment_types: [],
         excluded_schedules: [],
+        wanted_employment_types: ['permanent'],
+        dream_employers: [],
         employment_type_allowlist: [],
         description_match_requires: [],
         flags: {},
@@ -301,5 +318,158 @@ describe('every screen mounts', () => {
       expect(screen.getByText(number)).toBeInTheDocument();
     }
     expect(screen.queryByText('05')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * What the two rewritten screens are actually for.
+ *
+ * The mount tests above catch a blank page. These catch the opposite failure:
+ * a screen that renders perfectly and does the wrong thing -- the front page
+ * still being the form, a discarded ad quietly setting the wrong status, the
+ * letter button still being a bare glyph a screen reader reads as "pencil".
+ */
+describe('the front page and the sifting', () => {
+  /** Answers that override the shared stand-in server, per test. */
+  let overrides: Record<string, unknown> = {};
+  let sent: { url: string; body: unknown }[] = [];
+
+  beforeEach(() => {
+    overrides = {};
+    sent = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const path = url.split('?')[0] ?? url;
+        if (init?.body) sent.push({ url: path, body: JSON.parse(String(init.body)) });
+        const answer = path in overrides ? overrides[path] : answerFor(url);
+        return Promise.resolve(
+          new Response(JSON.stringify(answer), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('the front page leads with the one button, not with the form', async () => {
+    render(wrap(<HomeScreen />));
+    const go = await screen.findByRole('button', { name: 'Run the search' });
+    // It stays disabled until the saved setup is in hand: a big button that
+    // starts nothing is worse than one that is visibly not ready yet.
+    await waitFor(() => expect(go).toBeEnabled());
+    expect(screen.getByRole('button', { name: 'Open the job list' })).toBeInTheDocument();
+    // The thing it replaced: no source picker, no keyword editor, no filters.
+    expect(screen.queryByText('RSS or Atom feed')).not.toBeInTheDocument();
+  });
+
+  it('the front page summarises the search without offering to edit it inline', async () => {
+    render(wrap(<HomeScreen />));
+    // Read from the same saved setup the editor seeds itself from, so the two
+    // can never drift apart.
+    expect(await screen.findByText(/GIS: gis/)).toBeInTheDocument();
+    expect(screen.getByText('Rijeka')).toBeInTheDocument();
+    expect(screen.getByText('permanent')).toBeInTheDocument();
+    expect(screen.getByText('hzz')).toBeInTheDocument();
+    // Nothing on it is typeable.
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  it('an account with no saved search is told so rather than given a dead button', async () => {
+    overrides['/api/profiles/setup/default'] = { name: 'default', kind: 'setup', payload: null };
+    render(wrap(<HomeScreen />));
+    expect(await screen.findByText(/no saved search yet/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run the search' })).toBeDisabled();
+  });
+
+  it('a setup saved before contract types existed still renders', async () => {
+    // The field arrived after some accounts had already run the wizard, so it
+    // is simply absent for them. Absent is not empty and must not be a crash.
+    const { payload } = RESPONSES['/api/profiles/setup/default'] as {
+      payload: { profile: Record<string, unknown> };
+    };
+    const { wanted_employment_types: _gone, ...older } = payload.profile;
+    overrides['/api/profiles/setup/default'] = {
+      name: 'default',
+      kind: 'setup',
+      payload: { ...payload, profile: older },
+    };
+
+    render(wrap(<HomeScreen />));
+    expect(await screen.findByText(/GIS: gis/)).toBeInTheDocument();
+    expect(screen.queryByText('Contract types')).not.toBeInTheDocument();
+  });
+
+  it('the results table says which source found each job', async () => {
+    render(wrap(<ResultsScreen />));
+    expect(await screen.findByText('GIS Engineer')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Source' })).toBeInTheDocument();
+    expect(screen.getByText('rss')).toBeInTheDocument();
+  });
+
+  it('an undecided job offers two answers and no status menu', async () => {
+    render(wrap(<ResultsScreen />));
+    expect(await screen.findByRole('button', { name: /Keep job/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Discard job/ })).toBeInTheDocument();
+    // The per-row dropdown is gone: status belongs to the tracker now. The two
+    // remaining selects are the filters at the top.
+    expect(screen.queryByRole('combobox', { name: /Status — /  })).not.toBeInTheDocument();
+  });
+
+  it('discarding a job sets the status the board calls discarded', async () => {
+    render(wrap(<ResultsScreen />));
+    await userEvent.click(await screen.findByRole('button', { name: /Discard job/ }));
+
+    await waitFor(() => {
+      const move = sent.find((one) => one.url === '/api/applications/status');
+      expect(move?.body).toMatchObject({
+        dedup_key: 'example.test/j/1',
+        status: 'skipped',
+      });
+    });
+  });
+
+  it('keeping a job answers the row without changing its status', async () => {
+    render(wrap(<ResultsScreen />));
+    await userEvent.click(await screen.findByRole('button', { name: /Keep job/ }));
+
+    // Kept means "yes, this one" -- it stays new, which is what the tracker's
+    // first column means. So nothing is sent, and the row stops asking.
+    expect(sent.find((one) => one.url === '/api/applications/status')).toBeUndefined();
+    expect(screen.queryByRole('button', { name: /Keep job/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Continue to tracker/ })).toBeInTheDocument();
+  });
+
+  it('the way on appears only once the page has been sifted', async () => {
+    render(wrap(<ResultsScreen />));
+    await screen.findByRole('button', { name: /Keep job/ });
+    expect(screen.queryByRole('button', { name: /Continue to tracker/ })).not.toBeInTheDocument();
+  });
+
+  it('the results can be narrowed to one past search', async () => {
+    render(wrap(<ResultsScreen />));
+    const picker = await screen.findByRole('combobox', { name: 'Which search' });
+    // Labelled by when it ran and what it brought in, because two searches on
+    // one morning share a date and nothing else would tell them apart.
+    await waitFor(() => expect(picker).toHaveTextContent(/Latest/));
+    expect(picker).toHaveTextContent(/34 jobs/);
+  });
+
+  it('the letter button says what it is instead of only drawing a pencil', async () => {
+    render(wrap(<ResultsScreen />));
+    const letter = await screen.findByRole('button', { name: /Application letter/ });
+    expect(letter).toHaveTextContent('Application letter');
+  });
+
+  it('the search editor is reachable but not in the rail', () => {
+    render(wrap(<Shell />));
+    expect(screen.queryByRole('link', { name: /edit search/i })).not.toBeInTheDocument();
   });
 });

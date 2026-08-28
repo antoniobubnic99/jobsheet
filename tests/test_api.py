@@ -427,8 +427,9 @@ class TestPostings:
 
 class TestApplications:
     def test_the_board_has_every_column(self, client: TestClient) -> None:
+        """Discarded leads, rejected trails; the interface draws this order."""
         body = client.get("/api/applications/board").json()
-        assert body["order"] == ["new", "applied", "interview", "offer", "rejected", "skipped"]
+        assert body["order"] == ["skipped", "new", "applied", "interview", "offer", "rejected"]
 
     def test_a_job_lands_in_its_column(self, client: TestClient, state: Any) -> None:
         state.db.save_row(job(1, status=ApplicationStatus.APPLIED))
@@ -786,3 +787,425 @@ class TestSettings:
     def test_it_never_echoes_the_token(self, client: TestClient, state: Any) -> None:
         """It is the thing that authorises the call; repeating it only adds risk."""
         assert state.settings.token not in client.get("/api/settings").text
+        assert state.settings.token not in client.get("/api/settings/folders").text
+
+
+class TestChangingTheWorkbookPath:
+    """The wizard's answer is not the last word: people move their files."""
+
+    def test_the_path_can_be_changed_after_the_wizard(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        wanted = tmp_path / "poslovi.xlsx"
+        response = client.put("/api/settings/workbook", json={"path": str(wanted)})
+
+        assert response.status_code == 200
+        assert response.json()["workbook"] == str(wanted)
+        assert response.json()["moved"] is False
+        # And it is the answer every later request gets, without a restart.
+        assert client.get("/api/settings").json()["workbook"] == str(wanted)
+        assert client.get("/api/auth/me").json()["workbook_path"] == str(wanted)
+
+    def test_the_workbook_can_travel_to_the_new_path(
+        self, client: TestClient, state: Any, tmp_path: Path
+    ) -> None:
+        """Without this, changing the path silently orphans a year of ticks."""
+        was = Path(client.get("/api/settings").json()["workbook"])
+        was.parent.mkdir(parents=True, exist_ok=True)
+        was.write_bytes(b"pretend spreadsheet")
+
+        wanted = tmp_path / "elsewhere" / "poslovi.xlsx"
+        wanted.parent.mkdir()
+        response = client.put(
+            "/api/settings/workbook", json={"path": str(wanted), "move": True}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["moved"] is True
+        assert wanted.read_bytes() == b"pretend spreadsheet"
+        assert not was.exists()
+
+    def test_a_workbook_open_in_excel_is_not_moved(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        was = Path(client.get("/api/settings").json()["workbook"])
+        was.parent.mkdir(parents=True, exist_ok=True)
+        was.write_bytes(b"pretend spreadsheet")
+        was.with_name(f"~${was.name}").write_bytes(b"")
+
+        response = client.put(
+            "/api/settings/workbook",
+            json={"path": str(tmp_path / "poslovi.xlsx"), "move": True},
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "workbook_locked"
+        # Nothing moved and nothing was recorded: the account still points here.
+        assert was.exists()
+        assert client.get("/api/settings").json()["workbook"] == str(was)
+
+    def test_a_move_will_not_write_over_a_workbook_already_there(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        was = Path(client.get("/api/settings").json()["workbook"])
+        was.parent.mkdir(parents=True, exist_ok=True)
+        was.write_bytes(b"mine")
+        occupied = tmp_path / "poslovi.xlsx"
+        occupied.write_bytes(b"somebody else's")
+
+        response = client.put(
+            "/api/settings/workbook", json={"path": str(occupied), "move": True}
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "workbook_in_the_way"
+        assert occupied.read_bytes() == b"somebody else's"
+
+    def test_pointing_at_a_workbook_that_is_there_is_allowed_without_moving(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        """Adopting an existing spreadsheet is the other half of this feature."""
+        existing = tmp_path / "poslovi.xlsx"
+        existing.write_bytes(b"already mine")
+
+        response = client.put("/api/settings/workbook", json={"path": str(existing)})
+
+        assert response.status_code == 200
+        assert response.json()["workbook_exists"] is True
+        assert existing.read_bytes() == b"already mine"
+
+    def test_a_path_that_is_not_a_spreadsheet_is_refused(self, client: TestClient) -> None:
+        response = client.put("/api/settings/workbook", json={"path": "notes.txt"})
+        assert response.status_code == 422
+        assert response.json()["detail"]["code"] == "workbook_not_xlsx"
+
+    def test_a_folder_that_does_not_exist_is_refused(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        response = client.put(
+            "/api/settings/workbook", json={"path": str(tmp_path / "nope" / "jobs.xlsx")}
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"]["code"] == "workbook_folder_missing"
+
+    def test_one_account_cannot_move_the_other_ones_workbook(
+        self, settings: Settings, tmp_path: Path
+    ) -> None:
+        app = create_app(settings)
+        with (
+            TestClient(app, base_url=BASE_URL) as ana,
+            TestClient(app, base_url=BASE_URL) as ivo,
+        ):
+            ana.headers[TOKEN_HEADER] = settings.token
+            ivo.headers[TOKEN_HEADER] = settings.token
+            sign_up(ana, "ana")
+            sign_up(ivo, "ivo", "another-good-one")
+
+            ana.put("/api/settings/workbook", json={"path": str(tmp_path / "ana.xlsx")})
+
+            assert ana.get("/api/settings").json()["workbook"] == str(tmp_path / "ana.xlsx")
+            assert ivo.get("/api/settings").json()["workbook"] != str(tmp_path / "ana.xlsx")
+
+
+class TestTheFolderPicker:
+    """Choosing where the workbook goes by looking, rather than by typing."""
+
+    def test_it_lists_folders_and_not_files(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        # Its own folder, not `tmp_path`: the settings fixture has already put
+        # `home/` in there, and this test is about what a listing contains.
+        disk = tmp_path / "disk"
+        (disk / "Documents").mkdir(parents=True)
+        (disk / "notes.txt").write_text("not a folder")
+
+        body = client.get("/api/settings/folders", params={"path": str(disk)}).json()
+
+        assert body["path"] == str(disk)
+        assert [folder["name"] for folder in body["folders"]] == ["Documents"]
+
+    def test_it_offers_the_way_back_up(self, client: TestClient, tmp_path: Path) -> None:
+        inner = tmp_path / "disk" / "Documents"
+        inner.mkdir(parents=True)
+        body = client.get("/api/settings/folders", params={"path": str(inner)}).json()
+        assert body["parent"] == str(inner.parent)
+
+    def test_it_starts_where_the_workbook_already_is(self, client: TestClient) -> None:
+        workbook = Path(client.get("/api/settings").json()["workbook"])
+        assert client.get("/api/settings/folders").json()["path"] == str(workbook.parent)
+
+    def test_a_folder_that_is_not_there_falls_back_rather_than_failing(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        """A picker that 500s the moment a path goes stale is a picker nobody trusts."""
+        response = client.get(
+            "/api/settings/folders", params={"path": str(tmp_path / "gone")}
+        )
+        assert response.status_code == 200
+        assert response.json()["path"] == str(Path.home())
+
+    def test_it_hides_the_dotted_folders_nobody_keeps_a_job_search_in(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        disk = tmp_path / "disk"
+        (disk / ".venv").mkdir(parents=True)
+        (disk / "Desktop").mkdir()
+        body = client.get("/api/settings/folders", params={"path": str(disk)}).json()
+        assert [folder["name"] for folder in body["folders"]] == ["Desktop"]
+
+
+# ------------------------------------------------- what the progress bars need
+
+
+class TestProgressPerSource:
+    """The second channel on the search stream: positions, not sentences."""
+
+    def test_a_run_reports_a_position_for_every_source(self, client: TestClient) -> None:
+        ApiSource.postings = [ad(1)]
+        started = client.post(
+            "/api/search", json={"sources": [{"source_id": "apifake"}]}
+        ).json()
+
+        run = client.get(f"/api/search/{started['id']}").json()
+        assert run["state"]["apifake"]["phase"] == "done"
+        assert run["state"]["apifake"]["percent"] == 100
+
+    def test_the_stream_carries_state_events_beside_the_prose(
+        self, client: TestClient
+    ) -> None:
+        ApiSource.postings = [ad(1)]
+        started = client.post(
+            "/api/search", json={"sources": [{"source_id": "apifake"}]}
+        ).json()
+
+        body = client.get(f"/api/search/{started['id']}/stream").text
+        assert "event: state" in body
+        # The old channel is untouched, so a client that ignores `state` still works.
+        assert "event: progress" in body
+
+    def test_a_reloaded_page_does_not_come_back_to_empty_bars(
+        self, client: TestClient
+    ) -> None:
+        """The bars replay as a position, not a history: current values, once each."""
+        ApiSource.postings = [ad(1)]
+        started = client.post(
+            "/api/search", json={"sources": [{"source_id": "apifake"}]}
+        ).json()
+
+        body = client.get(f"/api/search/{started['id']}/stream").text
+        states = [line for line in body.splitlines() if line.startswith("data: {")]
+        assert len(states) == 1
+        assert json.loads(states[0].removeprefix("data: "))["percent"] == 100
+
+    def test_a_source_that_failed_does_not_report_as_finished(
+        self, client: TestClient
+    ) -> None:
+        started = client.post(
+            "/api/search", json={"sources": [{"source_id": "apifake"}]}
+        ).json()
+        run = client.get(f"/api/search/{started['id']}").json()
+        assert run["state"]["apifake"]["phase"] in {"done", "failed"}
+
+
+class TestFilteringByWhichSearch:
+    """Item 15: two searches in one morning must be tellable apart."""
+
+    def test_a_finished_run_says_which_row_it_became(self, client: TestClient) -> None:
+        ApiSource.postings = [ad(1)]
+        started = client.post(
+            "/api/search", json={"sources": [{"source_id": "apifake"}]}
+        ).json()
+        run = client.get(f"/api/search/{started['id']}").json()
+        assert run["run_id"]
+
+    def test_the_results_can_be_narrowed_to_one_search(self, client: TestClient) -> None:
+        ApiSource.postings = [ad(1)]
+        first = client.get(
+            f"/api/search/"
+            f"{client.post('/api/search', json={'sources': [{'source_id': 'apifake'}]}).json()['id']}"
+        ).json()
+
+        ApiSource.postings = [ad(2)]
+        second = client.get(
+            f"/api/search/"
+            f"{client.post('/api/search', json={'sources': [{'source_id': 'apifake'}]}).json()['id']}"
+        ).json()
+
+        assert client.get("/api/postings").json()["total"] == 2
+        one = client.get("/api/postings", params={"run": first["run_id"]}).json()
+        assert one["total"] == 1
+        assert one["rows"][0]["posting"]["title"] == "GIS Engineer 1"
+        assert client.get("/api/postings", params={"run": second["run_id"]}).json()["total"] == 1
+
+    def test_past_searches_are_listed_with_what_they_added(
+        self, client: TestClient
+    ) -> None:
+        """The filter needs a label per search, and `added` is what makes one."""
+        ApiSource.postings = [ad(1), ad(2)]
+        client.post("/api/search", json={"sources": [{"source_id": "apifake"}]})
+
+        runs = client.get("/api/postings/runs").json()
+        assert runs[0]["added"] == 2
+        assert runs[0]["started_at"]
+
+    def test_an_unknown_search_matches_nothing_rather_than_everything(
+        self, client: TestClient
+    ) -> None:
+        ApiSource.postings = [ad(1)]
+        client.post("/api/search", json={"sources": [{"source_id": "apifake"}]})
+        assert client.get("/api/postings", params={"run": "9999"}).json()["total"] == 0
+
+
+class TestTheSameJobNeverTwice:
+    """Item 22, end to end: the three memories, through the real endpoints."""
+
+    def test_a_deleted_job_does_not_return_on_the_next_search(
+        self, client: TestClient
+    ) -> None:
+        ApiSource.postings = [ad(1)]
+        client.post("/api/search", json={"sources": [{"source_id": "apifake"}]})
+        key = client.get("/api/postings").json()["rows"][0]["dedup_key"]
+
+        client.delete("/api/postings/one", params={"dedup_key": key})
+        assert client.get("/api/postings").json()["total"] == 0
+
+        client.post("/api/search", json={"sources": [{"source_id": "apifake"}]})
+        assert client.get("/api/postings").json()["total"] == 0
+
+    def test_a_discarded_job_does_not_return_either(self, client: TestClient) -> None:
+        """Discarding is a decision about an ad, so the ad stays and dedups."""
+        ApiSource.postings = [ad(1)]
+        client.post("/api/search", json={"sources": [{"source_id": "apifake"}]})
+        key = client.get("/api/postings").json()["rows"][0]["dedup_key"]
+        client.post(
+            "/api/applications/status", json={"dedup_key": key, "status": "skipped"}
+        )
+
+        client.post("/api/search", json={"sources": [{"source_id": "apifake"}]})
+        page = client.get("/api/postings").json()
+        assert page["total"] == 1
+        assert page["rows"][0]["status"] == "skipped"
+
+    def test_an_ad_turned_away_is_not_reconsidered_by_the_same_search(
+        self, client: TestClient
+    ) -> None:
+        ApiSource.postings = [ad(1, deadline=date(2026, 1, 1))]
+        client.post("/api/search", json={"sources": [{"source_id": "apifake"}]})
+
+        started = client.post(
+            "/api/search", json={"sources": [{"source_id": "apifake"}]}
+        ).json()
+        results = client.get(f"/api/search/{started['id']}/results").json()
+        assert [one["code"] for one in results["rejected"]] == ["filtered_out_before"]
+
+
+# ------------------------------------------------- what the wizard offers (A)
+
+
+class TestThePlacesList:
+    """Suggestions for the "where" step, so a place is picked rather than typed."""
+
+    def test_a_prefix_finds_the_town(self, client: TestClient) -> None:
+        places = client.get("/api/places", params={"q": "rij"}).json()["places"]
+        assert places[0]["name"] == "Rijeka"
+        assert places[0]["county"] == "Primorsko-goranska"
+
+    def test_a_county_carries_the_feed_number_that_would_search_it(
+        self, client: TestClient
+    ) -> None:
+        """The bonus in A3: picking a county can tick the right HZZ feed."""
+        body = client.get("/api/places", params={"q": "primorsko", "kind": "county"}).json()
+        assert body["places"][0] == {
+            "name": "Primorsko-goranska",
+            "kind": "county",
+            "county": "Primorsko-goranska",
+            "feed": 13,
+        }
+
+    def test_every_county_comes_back_whatever_was_asked(self, client: TestClient) -> None:
+        """The picker draws all twenty-one the moment the field is focused."""
+        assert len(client.get("/api/places", params={"q": "rij"}).json()["counties"]) == 21
+
+    def test_a_place_that_sits_in_two_counties_claims_neither(
+        self, client: TestClient
+    ) -> None:
+        (privlaka,) = [
+            place
+            for place in client.get("/api/places", params={"q": "privlaka"}).json()["places"]
+            if place["name"] == "Privlaka"
+        ]
+        assert privlaka["county"] == ""
+        assert privlaka["feed"] is None
+
+    def test_an_unknown_kind_is_refused_rather_than_guessed(self, client: TestClient) -> None:
+        assert client.get("/api/places", params={"kind": "planet"}).status_code == 422
+
+    def test_a_signed_out_browser_gets_nowhere(self, anonymous: TestClient) -> None:
+        assert anonymous.get("/api/places").status_code == 401
+
+
+class TestTheEmployersSeenSoFar:
+    """Suggestions for the employer fields, drawn from the user's own rows.
+
+    From their own rows and not a company register, because the employer somebody
+    wants to skip is one whose ads they are tired of -- and because no source in
+    JobSheet needs credentials, and this should not be the first that does.
+    """
+
+    def test_nothing_collected_yet_means_nothing_to_offer(self, client: TestClient) -> None:
+        assert client.get("/api/postings/companies").json() == {"companies": [], "total": 0}
+
+    def test_it_offers_the_employers_in_the_users_rows(
+        self, client: TestClient, state: Any
+    ) -> None:
+        state.db.save_rows([job(1, posting=ad(1, company="Geodetski zavod d.o.o.")), job(2)])
+        names = [one["name"] for one in client.get("/api/postings/companies").json()["companies"]]
+        assert "Geodetski zavod d.o.o." in names
+
+    def test_one_employer_written_two_ways_is_one_entry(
+        self, client: TestClient, state: Any
+    ) -> None:
+        state.db.save_rows(
+            [
+                job(1, posting=ad(1, company="ERICSSON NIKOLA TESLA")),
+                job(2, posting=ad(2, company="Ericsson Nikola Tesla d.d.")),
+            ]
+        )
+        body = client.get("/api/postings/companies").json()
+        assert body["total"] == 1
+        # The fullest spelling wins: it is the one the user saw in the ad.
+        assert body["companies"][0]["name"] == "Ericsson Nikola Tesla d.d."
+        assert body["companies"][0]["count"] == 2
+
+    def test_the_query_narrows_it(self, client: TestClient, state: Any) -> None:
+        state.db.save_rows(
+            [
+                job(1, posting=ad(1, company="Geodetski zavod d.o.o.")),
+                job(2, posting=ad(2, company="Ericsson Nikola Tesla d.d.")),
+            ]
+        )
+        body = client.get("/api/postings/companies", params={"q": "ericsson"}).json()
+        assert [one["name"] for one in body["companies"]] == ["Ericsson Nikola Tesla d.d."]
+
+    def test_the_legal_form_does_not_have_to_be_typed_to_find_it(
+        self, client: TestClient, state: Any
+    ) -> None:
+        state.db.save_rows([job(1, posting=ad(1, company="Geodetski zavod d.o.o."))])
+        body = client.get("/api/postings/companies", params={"q": "geodetski zavod"}).json()
+        assert body["total"] == 1
+
+    def test_an_ad_with_no_employer_is_not_an_employer(
+        self, client: TestClient, state: Any
+    ) -> None:
+        state.db.save_rows([job(1, posting=ad(1, company=""))])
+        assert client.get("/api/postings/companies").json()["total"] == 0
+
+    def test_one_account_is_not_offered_anothers_employers(
+        self, client: TestClient, state: Any, settings: Settings
+    ) -> None:
+        """The account boundary, on a route that reads every row this user has."""
+        state.db.save_rows([job(1, posting=ad(1, company="Geodetski zavod d.o.o."))])
+        with TestClient(client.app, base_url=BASE_URL) as other:
+            other.headers[TOKEN_HEADER] = settings.token
+            sign_up(other, "somebody-else")
+            assert other.get("/api/postings/companies").json() == {"companies": [], "total": 0}

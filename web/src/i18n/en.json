@@ -1,7 +1,8 @@
 {
   "app": {
     "name": "JobSheet",
-    "tagline": "Collect job ads from anywhere. Get a spreadsheet you actually own."
+    "tagline": "Collect job ads from anywhere. Get a spreadsheet you actually own.",
+    "skipToContent": "Skip to content"
   },
   "nav": {
     "search": "Search",
@@ -13,7 +14,9 @@
     "resultsHint": "What came back, and why",
     "designerHint": "Your columns, your colours",
     "trackerHint": "Where each application stands",
-    "settingsHint": "Paths, backups, language"
+    "settingsHint": "Paths, backups, language",
+    "searchEdit": "Edit search",
+    "searchEditHint": "Sources, words, filters"
   },
   "common": {
     "loading": "Loading…",
@@ -33,7 +36,11 @@
     "themeLight": "Light",
     "themeDark": "Dark",
     "themeSystem": "System",
-    "copied": "Copied"
+    "copied": "Copied",
+    "remove": "Remove {{value}}",
+    "alreadyThere": "“{{value}}” is already in the list.",
+    "backspaceAgain": "Backspace again to remove “{{value}}”.",
+    "orTypeYourOwn": "… or type your own"
   },
   "search": {
     "title": "Search",
@@ -74,7 +81,19 @@
     "seeResults": "See what it found",
     "healthOk": "Last worked {{when}}",
     "healthBad": "Last failed {{when}}",
-    "healthUnknown": "Not tried yet"
+    "healthUnknown": "Not tried yet",
+    "showDetails": "Show details",
+    "seeWhatArrived": "See what arrived",
+    "seeResultsCount_one": "Review results ({{count}} new job)",
+    "seeResultsCount_other": "Review results ({{count}} new jobs)",
+    "phase": {
+      "waiting": "waiting",
+      "fetching": "fetching",
+      "filtering": "filtering",
+      "details": "checking details",
+      "done": "done",
+      "failed": "failed"
+    }
   },
   "results": {
     "title": "Results",
@@ -99,7 +118,13 @@
     "next": "Next",
     "turnedAway": "Turned away",
     "turnedAwayLede": "Ads that matched your words but were removed by a rule. Shown so you can see which rule.",
-    "letter": "Draft a letter"
+    "letter": "Application letter",
+    "keep": "Keep job",
+    "discard": "Discard job",
+    "continueToTracker": "Continue to tracker",
+    "whichSearch": "Which search",
+    "allSearches": "All searches",
+    "latestSearch": "Latest"
   },
   "designer": {
     "title": "Sheet designer",
@@ -145,7 +170,12 @@
     "history": "History",
     "noHistory": "This one has not moved yet.",
     "moved": "{{from}} → {{to}}",
-    "dropHere": "Drop here"
+    "dropHere": "Drop here",
+    "boardEmpty": "Nothing to track yet. Run a search, then keep what looks worth keeping.",
+    "openHint": "Open for details",
+    "discard": "Discard",
+    "moveTopTo": "Move {{title}} to {{column}}",
+    "cannotMove": "Nothing to move"
   },
   "status": {
     "new": "New",
@@ -153,7 +183,7 @@
     "interview": "Interview",
     "offer": "Offer",
     "rejected": "Rejected",
-    "skipped": "Skipped"
+    "skipped": "Discarded"
   },
   "settings": {
     "title": "Settings",
@@ -177,10 +207,22 @@
     "sourcesLede": "Third-party endpoints change without notice. This is the last thing each one actually did.",
     "never": "Never run",
     "fairPlay": "Only public data",
-    "fairPlayText": "JobSheet reads public feeds and public APIs, respects robots.txt, rate-limits itself and identifies itself honestly. It does not log in anywhere and does not touch anything behind an authentication wall."
+    "fairPlayText": "JobSheet reads public feeds and public APIs, respects robots.txt, rate-limits itself and identifies itself honestly. It does not log in anywhere and does not touch anything behind an authentication wall.",
+    "workbookHint": "The spreadsheet you open. Change where it lives, and take it with you.",
+    "changeWorkbook": "Change where it is",
+    "workbookName": "File name",
+    "moveWorkbook": "Move the workbook I already have to the new place",
+    "moveWorkbookWarning": "Without this, the ticks and notes you typed in the old workbook stay in the old workbook. JobSheet will start a new one at the new path.",
+    "workbookMoved": "Moved. The workbook and everything in it is at the new path.",
+    "workbookPointed": "Done. JobSheet now writes to the new path.",
+    "folder": "Folder",
+    "folderUp": "Up",
+    "folderHome": "Home",
+    "folderEmpty": "No folders in here.",
+    "folderReadOnly": "This folder cannot be written to. Pick another one."
   },
   "letter": {
-    "title": "Covering letter",
+    "title": "Application letter",
     "lede": "A first draft, filled in from the ad. JobSheet fills the mechanical parts; the words are yours.",
     "yourName": "Your name",
     "yourEmail": "Email",
@@ -237,7 +279,11 @@
     "newPassword": "New password",
     "passwordChanged": "Changed. Every window has been signed out, including this one.",
     "account": "Account",
-    "accountHint": "Signed in on this computer. Your rows, your workbook."
+    "accountHint": "Signed in on this computer. Your rows, your workbook.",
+    "profile": "Your account",
+    "mySearch": "My search",
+    "mySearchHint": "What you are looking for, and where",
+    "signOutSure": "Sign out? Your jobs and notes stay on this computer."
   },
   "welcome": {
     "greeting": "Welcome, {{name}}.",
@@ -255,6 +301,12 @@
     },
     "keywords": {
       "step": "Words",
+      "stems": "The words here are beginnings, not whole words. An ad will not say surveyor, it will say surveying technician — so survey catches both. Three or four beginnings are usually enough.",
+      "offer": "From “{{headline}}”, JobSheet would try:",
+      "accept": "Use these",
+      "result": "Ads that match go into your spreadsheet under the category",
+      "noneWarning": "With no words at all, every ad from every source you pick comes through. That is a real choice — just not usually the one people mean.",
+      "halfTyped": "A group with a name but no words matches nothing, and will not be saved. Give it a word, or remove it.",
       "title": "Which words mean that job?",
       "lede": "Ads do not use your title, they use theirs. Group the words that mean the same thing, and name each group -- the name is the category that lands in your spreadsheet. Groups are tried in order, and the first that matches wins."
     },
@@ -268,7 +320,8 @@
       "regionsHint": "For sources that say the region rather than the town.",
       "regionsPlaceholder": "Primorsko-goranska…",
       "remote": "Words that mean remote",
-      "remoteHint": "An ad matching one of these counts as being where you are."
+      "remoteHint": "An ad matching one of these counts as being where you are.",
+      "regionsAreASecondChoice": "A county is only consulted when an ad names no town at all. On one government portal the county field holds the address of the office that published the ad rather than the job — so the town, when there is one, decides."
     },
     "freshness": {
       "step": "Age",
@@ -277,35 +330,44 @@
       "label": "Skip ads older than",
       "hint": "Thirty days suits most searches. Lower it if you are looking every day."
     },
-    "no": {
-      "step": "No thanks",
-      "title": "What would you rather not see?",
-      "lede": "Every one of these is optional, and every one of them is a rule you can change later.",
-      "employers": "Employers to skip",
-      "employersHint": "Agencies you have had enough of, or a former employer.",
-      "types": "Contract types to skip",
-      "typesHint": "Matched as plain words against what the ad says.",
-      "allowlist": "…except when the ad also says",
-      "allowlistHint": "This exists because of a real trap: \"na neodređeno\" (permanent) contains \"određeno\" (fixed-term), so blocking one blocks both. Anything listed here wins over the list above.",
+    "employers": {
+      "step": "Employers",
+      "title": "Who would you work for?",
+      "lede": "All of this is optional and all of it can be changed later. Start typing and JobSheet offers the employers it has already seen in your own ads.",
+      "dream": "Employers you are hoping for",
+      "dreamHint": "These never filter anything out. An ad from one of them gets a ⭐ on its row, so it is the one you see first in a sheet of ninety.",
+      "skip": "Employers to skip",
+      "skipHint": "Agencies you have had enough of, or a former employer.",
+      "seenTimes_one": "{{count}} ad",
+      "seenTimes_other": "{{count}} ads",
+      "contracts": "Contracts you want",
+      "contractsHint": "Tick nothing and every kind of contract comes through, which is the right answer for most searches. These are matched as beginnings, like every other word here.",
+      "unstatedArePassed": "An ad that does not say what contract it offers still comes through, marked. Half the sources never state it, and dropping those would cost you most of the search.",
+      "contract": {
+        "neodređeno": "Permanent (na neodređeno)",
+        "određeno": "Fixed term (na određeno)",
+        "puno_radno_vrijeme": "Full time",
+        "nepuno_radno_vrijeme": "Part time",
+        "sezonski": "Seasonal",
+        "praksa": "Internship or traineeship",
+        "ugovor_o_djelu": "Freelance contract",
+        "student": "Student work"
+      },
       "schedules": "Working patterns to skip",
       "schedulesHint": "Night shifts, weekends, split shifts -- whatever you will not do."
     },
-    "fine": {
-      "step": "Fine print",
-      "title": "Two rules for the awkward cases",
-      "lede": "Skip this if none of it sounds familiar. It is here for the second month of looking, when the same wrong ad keeps arriving.",
-      "evidence": "A word in the description is not enough unless",
-      "evidenceHint": "When the only match was in the body text, demand that the ad's education field mentions one of these. Empty turns the rule off.",
-      "flags": "Things worth noticing",
-      "flagsHint": "These never reject an ad, they only mark it -- a regex cannot tell a hard requirement from a nice-to-have. Name the mark, then list the words that raise it."
-    },
     "sources": {
       "step": "Sources",
+      "all": "Select all",
+      "onlyCountry": "Only {{country}}",
+      "none": "Clear",
       "title": "Where should JobSheet look?",
       "lede": "Every one of these is a public feed or a public API. No account, no key, nothing behind a login. Pick as many as you like -- they are fetched at the same time."
     },
     "workbook": {
       "step": "The file",
+      "folder": "Folder",
+      "fileName": "File name",
       "title": "Where should your spreadsheet live?",
       "lede": "This is the file you will actually open. Put it somewhere you look -- your Desktop is a good answer.",
       "label": "Workbook",
@@ -315,11 +377,13 @@
       "label": "So, to be clear",
       "looking": "Looking for",
       "terms": "Words",
+      "categories": "Categories",
       "where": "Where",
       "sources": "Sources",
       "freshness": "Freshness",
       "anything": "anything",
       "anywhere": "anywhere",
+      "none": "none — nothing will be categorised",
       "days_one": "ads up to {{count}} day old",
       "days_other": "ads up to {{count}} days old"
     }
@@ -406,5 +470,15 @@
   "error": {
     "title": "Something went wrong",
     "generic": "Could not reach JobSheet."
+  },
+  "home": {
+    "title": "Your search",
+    "lede": "One button. Everything it needs was answered when you set this up.",
+    "today": "Today",
+    "openList": "Open the job list",
+    "summary": "What this search looks for",
+    "edit": "Edit search",
+    "contracts": "Contract types",
+    "nothingSetUp": "This account has no saved search yet."
   }
 }

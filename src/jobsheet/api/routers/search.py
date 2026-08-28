@@ -111,14 +111,21 @@ def _sse(event: str, data: str) -> str:
 
 @router.get("/{run_id}/stream")
 async def stream_run(run_id: str, state: CurrentState) -> StreamingResponse:
-    """Live commentary as server-sent events, then one closing `end` event."""
+    """Live commentary as server-sent events, then one closing `end` event.
+
+    Two kinds of event travel this one stream. `progress` is the prose a person
+    reads; `state` is one source's position as JSON, which is what the bars are
+    drawn from. They are separate events rather than one merged shape because a
+    client that only understands `progress` -- the previous version of this
+    interface, say -- keeps working untouched.
+    """
     run = state.runs.get(run_id)
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such search")
 
     async def events() -> AsyncIterator[str]:
-        async for line in run.listen():
-            yield _sse("progress", line)
+        async for event, data in run.listen():
+            yield _sse(event, data)
         yield _sse("end", str(run.phase))
 
     return StreamingResponse(

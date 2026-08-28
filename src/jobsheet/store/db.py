@@ -30,6 +30,7 @@ from typing import Any
 
 from jobsheet.core.models import ApplicationStatus, Posting, Workplace
 from jobsheet.sheet.row import JobRow
+from jobsheet.store.profiles import migrate_profile_payload, stamp
 
 __all__ = ["MIGRATIONS", "SOLO_USERNAME", "Database"]
 
@@ -200,6 +201,43 @@ MIGRATIONS: list[str] = [
     ALTER TABLE runs ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1;
     CREATE INDEX idx_runs_user ON runs(user_id, id);
     """,
+    # 3 -- which search found an ad, and two kinds of memory about ads that did
+    # not make it onto the list. All three answer the same complaint: the same
+    # job kept coming back.
+    """
+    -- Which run brought this ad in. `found_at` is a date, so two searches on
+    -- one morning are indistinguishable by it -- and "which of today's searches
+    -- was this from" is exactly the question being asked.
+    ALTER TABLE applications ADD COLUMN run_id TEXT NOT NULL DEFAULT '';
+    CREATE INDEX idx_applications_run ON applications(user_id, run_id);
+
+    -- Ads the user deleted outright. Deleting removes the row, so without a
+    -- tombstone the next search finds the ad again, decides it is new, and
+    -- hands it straight back -- which reads as the delete not having worked.
+    CREATE TABLE forgotten (
+        user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        dedup_key TEXT NOT NULL,
+        at        TEXT NOT NULL,
+        PRIMARY KEY (user_id, dedup_key)
+    );
+
+    -- Ads a hard filter turned away. Re-fetching one is free; re-deciding it
+    -- costs a detail request per ad on every run, out of the same budget the
+    -- ads the user does want are competing for.
+    --
+    -- `profile_key` is what keeps this from becoming a grave. The decision
+    -- belonged to one search; when the search changes, the key stops matching
+    -- and every ad it held is considered again.
+    CREATE TABLE filtered_out (
+        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        dedup_key   TEXT NOT NULL,
+        code        TEXT NOT NULL,
+        profile_key TEXT NOT NULL DEFAULT '',
+        at          TEXT NOT NULL,
+        PRIMARY KEY (user_id, dedup_key)
+    );
+    CREATE INDEX idx_filtered_out_profile ON filtered_out(user_id, profile_key);
+    """,
 ]
 
 
@@ -362,7 +400,7 @@ class Database:
                 ),
             )
 
-    def save_row(self, row: JobRow) -> None:
+    def save_row(self, row: JobRow, *, run_id: str = "") -> None:
         """Store an ad together with what the user knows about it."""
         self.upsert_posting(row.posting, seen_on=row.found_at)
         now = datetime.now().isoformat(timespec="seconds")
@@ -371,11 +409,13 @@ class Database:
                 """
                 INSERT INTO applications (
                     user_id, dedup_key, status, category, note, user_values,
-                    link_text, found_at, updated_at
-                ) VALUES (?,?,?,?,?,?,?,?,?)
+                    link_text, found_at, updated_at, run_id
+                ) VALUES (?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(user_id, dedup_key) DO UPDATE SET
                     -- The app refreshes what it derived; it never touches status
-                    -- or the user's own columns.
+                    -- or the user's own columns. `run_id` is left alone too: it
+                    -- says which search *found* the ad, and a later sighting
+                    -- does not change that.
                     category = excluded.category,
                     note = excluded.note,
                     updated_at = excluded.updated_at
@@ -390,13 +430,57 @@ class Database:
                     row.link_text,
                     row.found_at.isoformat(),
                     now,
+                    run_id,
                 ),
             )
 
-    def save_rows(self, rows: list[JobRow]) -> int:
+    def save_rows(self, rows: list[JobRow], *, run_id: str = "") -> int:
         for row in rows:
-            self.save_row(row)
+            self.save_row(row, run_id=run_id)
         return len(rows)
+
+    # ----------------------------------------------------------- what not to
+    # bring back. Two separate memories, because they are two separate
+    # decisions: the user threw this away, versus a rule turned it away.
+
+    def forgotten_keys(self) -> set[str]:
+        """Ads this account deleted. The next search must not re-offer them."""
+        cursor = self._connection.execute(
+            "SELECT dedup_key FROM forgotten WHERE user_id = ?", (self.user_id,)
+        )
+        return {record[0] for record in cursor.fetchall()}
+
+    def remember_filtered(
+        self, entries: list[tuple[str, str]], *, profile_key: str
+    ) -> None:
+        """Record which ads a hard filter turned away, and under which search."""
+        if not entries:
+            return
+        now = datetime.now().isoformat(timespec="seconds")
+        with self.transaction() as connection:
+            connection.executemany(
+                """
+                INSERT INTO filtered_out (user_id, dedup_key, code, profile_key, at)
+                VALUES (?,?,?,?,?)
+                ON CONFLICT(user_id, dedup_key) DO UPDATE SET
+                    code = excluded.code,
+                    profile_key = excluded.profile_key,
+                    at = excluded.at
+                """,
+                [
+                    (self.user_id, key, code, profile_key, now)
+                    for key, code in entries
+                    if key
+                ],
+            )
+
+    def filtered_out_keys(self, profile_key: str) -> set[str]:
+        """Ads already turned away *by this search*. A changed search returns none."""
+        cursor = self._connection.execute(
+            "SELECT dedup_key FROM filtered_out WHERE user_id = ? AND profile_key = ?",
+            (self.user_id, profile_key),
+        )
+        return {record[0] for record in cursor.fetchall()}
 
     def record_run(
         self,
@@ -478,7 +562,7 @@ class Database:
     # few thousand ads instant and, more usefully, keeps the paging honest --
     # `total` counts what matches, not what happened to be loaded.
     def _filter(
-        self, status: str | None, query: str, source: str | None
+        self, status: str | None, query: str, source: str | None, run: str | None = None
     ) -> tuple[str, list[Any]]:
         # The account comes first and is never optional. A missing `user_id`
         # here would not raise, it would show one person another person's search.
@@ -490,6 +574,9 @@ class Database:
         if source:
             clauses.append("p.source_id LIKE ?")
             values.append(f"{source}%")
+        if run:
+            clauses.append("a.run_id = ?")
+            values.append(run)
         if query:
             # LIKE is case-insensitive for ASCII in SQLite but not beyond it, so
             # both sides are folded first. Diacritics are left alone here; the
@@ -510,11 +597,12 @@ class Database:
         status: str | None = None,
         query: str = "",
         source: str | None = None,
+        run: str | None = None,
         limit: int | None = None,
         offset: int = 0,
     ) -> list[JobRow]:
         """A page of tracked jobs, newest first."""
-        where, values = self._filter(status, query, source)
+        where, values = self._filter(status, query, source, run)
         # The interpolation below is safe, and safe for a reason worth stating:
         # `_filter` builds `where` out of string literals only. Every value the
         # user supplied travels separately in `values`, as a bound parameter.
@@ -530,9 +618,14 @@ class Database:
         return [_row_from_record(record) for record in cursor.fetchall()]
 
     def count_rows(
-        self, *, status: str | None = None, query: str = "", source: str | None = None
+        self,
+        *,
+        status: str | None = None,
+        query: str = "",
+        source: str | None = None,
+        run: str | None = None,
     ) -> int:
-        where, values = self._filter(status, query, source)
+        where, values = self._filter(status, query, source, run)
         cursor = self._connection.execute(
             "SELECT COUNT(*) FROM postings p JOIN applications a"  # noqa: S608
             f" ON a.dedup_key = p.dedup_key{where}",
@@ -556,11 +649,21 @@ class Database:
 
         The ad itself only goes when the last account tracking it lets go.
         Deleting it outright would reach into somebody else's spreadsheet.
+
+        A tombstone stays behind. Without it the deletion lasts until the next
+        search, which finds the same ad, sees nothing on the list matching it,
+        and puts it back -- so the only visible effect of deleting a job was
+        that it came back with its status and notes gone.
         """
         with self.transaction() as connection:
             cursor = connection.execute(
                 "DELETE FROM applications WHERE user_id = ? AND dedup_key = ?",
                 (self.user_id, dedup_key),
+            )
+            connection.execute(
+                "INSERT INTO forgotten (user_id, dedup_key, at) VALUES (?,?,?)"
+                " ON CONFLICT(user_id, dedup_key) DO UPDATE SET at = excluded.at",
+                (self.user_id, dedup_key, datetime.now().isoformat(timespec="seconds")),
             )
             connection.execute(
                 "DELETE FROM application_events WHERE user_id = ? AND dedup_key = ?",
@@ -594,6 +697,12 @@ class Database:
     # --------------------------------------------------------------- profiles
 
     def save_profile(self, name: str, kind: str, payload: dict[str, Any]) -> None:
+        """Store a profile, stamped with the version of the model that wrote it.
+
+        The stamp is put on here rather than by each caller because this is the
+        only way a payload reaches the table, and a payload written without one
+        is one `load_profile` will have to guess about later.
+        """
         with self.transaction() as connection:
             connection.execute(
                 """
@@ -606,18 +715,27 @@ class Database:
                     self.user_id,
                     name,
                     kind,
-                    json.dumps(payload, default=str),
+                    json.dumps(stamp(kind, payload), default=str),
                     datetime.now().isoformat(timespec="seconds"),
                 ),
             )
 
     def load_profile(self, name: str, kind: str) -> dict[str, Any] | None:
+        """A stored profile, brought up to what the current model expects.
+
+        Every reader goes through here -- the interface, `jobsheet run
+        --profile`, the wizard's own setup -- so migrating at this one point is
+        what stops a model change from stranding a saved search. See
+        `store.profiles`.
+        """
         cursor = self._connection.execute(
             "SELECT payload FROM profiles WHERE user_id = ? AND name = ? AND kind = ?",
             (self.user_id, name, kind),
         )
         record = cursor.fetchone()
-        return json.loads(record[0]) if record else None
+        if record is None:
+            return None
+        return migrate_profile_payload(kind, json.loads(record[0]))
 
     def list_profiles(self, kind: str) -> list[str]:
         cursor = self._connection.execute(

@@ -8,6 +8,7 @@ import './i18n';
 
 import { AccountProvider } from './lib/account';
 import Gate from './components/Gate';
+import HomeScreen from './screens/HomeScreen';
 import SearchScreen from './screens/SearchScreen';
 import ResultsScreen from './screens/ResultsScreen';
 import SheetDesigner from './screens/SheetDesigner';
@@ -31,12 +32,16 @@ const router = createBrowserRouter([
     // every address but appear only once somebody is through both.
     element: <Gate />,
     children: [
-      { index: true, element: <SearchScreen /> },
+      // The front page is the one button somebody presses every morning; the
+      // form that made this search is a screen you visit when it needs
+      // changing, so it has an address rather than the front page.
+      { index: true, element: <HomeScreen /> },
+      { path: 'search/edit', element: <SearchScreen /> },
       { path: 'results', element: <ResultsScreen /> },
       { path: 'designer', element: <SheetDesigner /> },
       { path: 'tracker', element: <TrackerScreen /> },
       { path: 'settings', element: <SettingsScreen /> },
-      { path: '*', element: <SearchScreen /> },
+      { path: '*', element: <HomeScreen /> },
     ],
   },
 ]);

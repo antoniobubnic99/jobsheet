@@ -1,23 +1,28 @@
 /**
- * 01 — Search.
+ * Edit the search — reached from the home screen, not from the rail.
  *
  * Two things carry this screen. The source list draws each source's form from
  * the manifest the server sends, so installing a plugin makes its form appear
- * here without a line being written. And the run, once started, prints its own
- * commentary live -- a search that talks to a dozen strangers' servers takes
- * long enough that silence would read as a hang.
+ * here without a line being written. And the run, once started, reports itself
+ * live -- a search that talks to a dozen strangers' servers takes long enough
+ * that silence would read as a hang.
  *
  * It opens filled in. The wizard that runs once after signing up writes the
  * account's setup, and this screen reads it back, so the first thing somebody
- * sees here is their own search with the button ready -- not the blank form the
- * wizard exists to spare them. Seeding happens once, and only into untouched
- * state: a setup arriving late must never overwrite something being typed.
+ * sees here is their own search rather than the blank form the wizard exists to
+ * spare them. Seeding happens once, and only into untouched state: a setup
+ * arriving late must never overwrite something being typed.
+ *
+ * This used to be the front page. It is a form with six sections, which is the
+ * right shape for changing a search and the wrong shape for running one, so the
+ * daily action moved to `HomeScreen` and this became the place you come to when
+ * something needs adjusting.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api, ApiError, DEFAULT_SETUP } from '@/lib/api';
 import {
@@ -26,6 +31,8 @@ import {
   type SearchSetup,
   type SourceManifest,
 } from '@/lib/types';
+import { screenNumber } from '@/lib/screens';
+import { useSearchRun } from '@/lib/useSearchRun';
 import { formatWhen } from '@/lib/format';
 import {
   ChipInput,
@@ -37,6 +44,7 @@ import {
   ScreenHeader,
   Section,
 } from '@/components/primitives';
+import RunProgress from '@/components/RunProgress';
 import SourceCard from '@/components/SourceCard';
 import KeywordGroups from '@/components/KeywordGroups';
 
@@ -66,56 +74,26 @@ export default function SearchScreen() {
   const [chosen, setChosen] = useState<Record<string, Record<string, unknown>>>({});
   const [profile, setProfile] = useState<SearchProfile>(EMPTY_PROFILE);
   const [seeded, setSeeded] = useState(false);
-  const [runId, setRunId] = useState<string | null>(null);
-  const [lines, setLines] = useState<string[]>([]);
-  const [phase, setPhase] = useState<'idle' | 'running' | 'done' | 'failed' | 'cancelled'>('idle');
   const [saveName, setSaveName] = useState('');
-  const logRef = useRef<HTMLDivElement>(null);
 
+  const run = useSearchRun();
   const chosenIds = Object.keys(chosen);
 
-  const start = useMutation({
-    mutationFn: () =>
-      api.startSearch({
-        sources: chosenIds.map((id) => ({ source_id: id, params: chosen[id] ?? {} })),
-        profile,
-      }),
-    onSuccess: (run) => {
-      setRunId(run.id);
-      setLines([]);
-      setPhase('running');
-    },
-  });
+  const startHere = () =>
+    run.start(
+      chosenIds.map((id) => ({ source_id: id, params: chosen[id] ?? {} })),
+      profile,
+    );
 
   useEffect(() => {
     const payload = setup.data?.payload;
     if (seeded || !payload) return;
     setSeeded(true);
-    setProfile(payload.profile);
+    setProfile({ ...EMPTY_PROFILE, ...payload.profile });
     setChosen(
       Object.fromEntries(payload.sources.map((one) => [one.source_id, one.params])),
     );
   }, [seeded, setup.data]);
-
-  // The live commentary. Unsubscribing on unmount matters: a user who wanders
-  // off to another screen mid-search should not leave a socket behind.
-  useEffect(() => {
-    if (!runId || phase !== 'running') return;
-    return api.watchRun(
-      runId,
-      (line) => setLines((current) => [...current, line]),
-      (ended) => {
-        setPhase(ended === 'done' ? 'done' : ended === 'cancelled' ? 'cancelled' : 'failed');
-        void queryClient.invalidateQueries({ queryKey: ['postings'] });
-        void queryClient.invalidateQueries({ queryKey: ['board'] });
-        void queryClient.invalidateQueries({ queryKey: ['sources'] });
-      },
-    );
-  }, [runId, phase, queryClient]);
-
-  useEffect(() => {
-    logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
-  }, [lines]);
 
   const grouped = useMemo(() => {
     const all = sources.data?.sources ?? [];
@@ -139,12 +117,12 @@ export default function SearchScreen() {
       return { ...current, [id]: defaults };
     });
 
-  const running = phase === 'running';
+  const running = run.state === 'running';
 
   return (
     <>
       <ScreenHeader
-        number="01"
+        number={screenNumber('searchEdit')}
         title={t('search.title')}
         lede={t('search.lede')}
         aside={
@@ -152,75 +130,32 @@ export default function SearchScreen() {
             type="button"
             className="btn btn-primary"
             disabled={running || chosenIds.length === 0}
-            onClick={() => start.mutate()}
+            onClick={startHere}
           >
             {running ? t('search.running') : t('search.run')}
           </button>
         }
       />
 
-      {chosenIds.length === 0 && start.isError ? (
+      {chosenIds.length === 0 ? (
         <div className="mt-[var(--gap-wide)]">
           <Note tone="warn">{t('search.noSources')}</Note>
         </div>
       ) : null}
 
-      {start.error instanceof ApiError ? (
-        <div className="mt-[var(--gap-wide)]">
-          <Problem message={start.error.message} />
-        </div>
-      ) : null}
-
-      {runId ? (
-        <Section
-          label={t('search.progress')}
-          aside={
-            running ? (
-              <button
-                type="button"
-                className="btn btn-quiet"
-                onClick={() => void api.cancelRun(runId)}
-              >
-                {t('search.stop')}
-              </button>
-            ) : phase === 'done' ? (
-              <button
-                type="button"
-                className="btn btn-quiet"
-                onClick={() => navigate('/results')}
-              >
-                {t('search.seeResults')}
-              </button>
-            ) : null
+      {run.state !== 'idle' ? (
+        <RunProgress
+          state={run.state}
+          progress={run.progress}
+          lines={run.lines}
+          found={run.found}
+          error={run.error}
+          onStop={run.cancel}
+          onRetry={startHere}
+          onSeeResults={() =>
+            navigate(run.recordedId ? `/results?run=${run.recordedId}` : '/results')
           }
-        >
-          <div
-            ref={logRef}
-            role="log"
-            aria-live="polite"
-            className="panel-sunk mono max-h-[15rem] overflow-y-auto px-[var(--gap)] py-[var(--gap-tight)] text-[var(--text-small)] leading-relaxed"
-          >
-            {lines.length === 0 ? (
-              <p className="text-[var(--ink-faint)]">{t('search.waiting')}</p>
-            ) : (
-              lines.map((line, index) => (
-                <p key={index} className="whitespace-pre-wrap">
-                  {line}
-                </p>
-              ))
-            )}
-            {phase !== 'idle' && phase !== 'running' ? (
-              <p
-                className="mt-[var(--gap-tight)] font-semibold"
-                style={{
-                  color: phase === 'done' ? 'var(--ok)' : phase === 'failed' ? 'var(--bad)' : 'var(--warn)',
-                }}
-              >
-                {t(`search.${phase === 'done' ? 'finished' : phase}`)}
-              </p>
-            ) : null}
-          </div>
-        </Section>
+        />
       ) : null}
 
       <Section

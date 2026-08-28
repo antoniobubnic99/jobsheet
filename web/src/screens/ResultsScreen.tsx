@@ -5,6 +5,13 @@
  * lines are hairlines, and the only things given room are the two columns a
  * person actually reads: the position and why it is on the list.
  *
+ * This screen is for sifting, not for managing. An undecided ad gets two
+ * answers -- keep it or discard it -- and nothing else. The full set of
+ * statuses used to live here as a dropdown on every row, which asked the wrong
+ * question at the wrong moment: "have I applied yet?" about an ad nobody has
+ * read. Once an ad is kept it becomes the tracker's business, and that is where
+ * its status is set.
+ *
  * Filtering and paging happen on the server. A local `filter()` would be one
  * line shorter and would quietly lie about the total once there were more jobs
  * than one page.
@@ -12,30 +19,59 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
 import { BOARD_ORDER, type ApplicationStatus, type JobRow } from '@/lib/types';
-import { daysUntil, formatDate, hostOf } from '@/lib/format';
-import { Empty, Loading, Problem, ScreenHeader } from '@/components/primitives';
+import { daysUntil, formatDate, formatWhen, hostOf } from '@/lib/format';
+import { Empty, Loading, Problem, ScreenHeader, StatusPill } from '@/components/primitives';
+import { screenNumber } from '@/lib/screens';
 import LetterDialog from '@/components/LetterDialog';
 
 const PAGE = 50;
 
 export default function ResultsScreen() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // Which search, kept in the address. A run finishes on another screen and
+  // sends the user here with `?run=`, and that link has to survive a reload.
+  const [params, setParams] = useSearchParams();
+  const run = params.get('run') ?? '';
 
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<'' | ApplicationStatus>('');
   const [offset, setOffset] = useState(0);
   const [letterFor, setLetterFor] = useState<JobRow | null>(null);
 
+  /**
+   * Ads kept during this visit.
+   *
+   * Keeping deliberately does not change the status: a kept ad is still `new`,
+   * which is exactly what the tracker's first column means. So there is nothing
+   * on the server to record it, and the set is local -- it exists to take the
+   * two buttons off a row the user has already answered, and to know when the
+   * page has been worked through. A reload forgets it, and forgetting is
+   * harmless: the ad is still there, still new, still in the tracker.
+   */
+  const [kept, setKept] = useState<ReadonlySet<string>>(new Set());
+
   const page = useQuery({
-    queryKey: ['postings', query, status, offset],
-    queryFn: () => api.postings({ q: query, status: status || undefined, limit: PAGE, offset }),
+    queryKey: ['postings', query, status, run, offset],
+    queryFn: () =>
+      api.postings({
+        q: query,
+        status: status || undefined,
+        run: run || undefined,
+        limit: PAGE,
+        offset,
+      }),
     placeholderData: keepPreviousData,
   });
+
+  const searches = useQuery({ queryKey: ['searchRuns'], queryFn: () => api.searchRuns() });
 
   const move = useMutation({
     mutationFn: ({ key, next }: { key: string; next: ApplicationStatus }) =>
@@ -57,10 +93,22 @@ export default function ResultsScreen() {
   const rows = page.data?.rows ?? [];
   const total = page.data?.total ?? 0;
 
+  const undecided = (row: JobRow) => row.status === 'new' && !kept.has(row.dedup_key);
+  /** Everything on this page has been answered, so there is somewhere to go next. */
+  const sifted = rows.length > 0 && !rows.some(undecided);
+
+  const keep = (key: string) =>
+    setKept((current) => new Set(current).add(key));
+
+  const chooseRun = (next: string) => {
+    setOffset(0);
+    setParams(next ? { run: next } : {}, { replace: true });
+  };
+
   return (
     <>
       <ScreenHeader
-        number="02"
+        number={screenNumber('results')}
         title={t('results.title')}
         lede={t('results.lede')}
         aside={
@@ -98,6 +146,25 @@ export default function ResultsScreen() {
             </option>
           ))}
         </select>
+
+        {/* Which search brought these in. `found_at` is a date, so two searches
+            in one morning cannot be told apart by it -- this is the only thing
+            that separates "what I just found" from "everything". */}
+        <select
+          className="field max-w-[18rem]"
+          aria-label={t('results.whichSearch')}
+          value={run}
+          onChange={(event) => chooseRun(event.target.value)}
+        >
+          <option value="">{t('results.allSearches')}</option>
+          {(searches.data ?? []).map((one, index) => (
+            <option key={one.id} value={String(one.id)}>
+              {index === 0 ? `${t('results.latestSearch')} — ` : ''}
+              {formatWhen(one.started_at, i18n.language)} ·{' '}
+              {t('common.jobs', { count: one.added })}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="mt-[var(--gap-wide)]">
@@ -107,7 +174,7 @@ export default function ResultsScreen() {
         ) : null}
 
         {page.data && rows.length === 0 ? (
-          <Empty>{query || status ? t('results.noMatch') : t('results.empty')}</Empty>
+          <Empty>{query || status || run ? t('results.noMatch') : t('results.empty')}</Empty>
         ) : null}
 
         {rows.length ? (
@@ -120,6 +187,9 @@ export default function ResultsScreen() {
                   </th>
                   <th className="eyebrow px-[var(--gap)] py-[var(--gap-tight)]">
                     {t('results.position')}
+                  </th>
+                  <th className="eyebrow px-[var(--gap)] py-[var(--gap-tight)]">
+                    {t('results.source')}
                   </th>
                   <th className="eyebrow px-[var(--gap)] py-[var(--gap-tight)]">
                     {t('results.place')}
@@ -164,6 +234,15 @@ export default function ResultsScreen() {
                         ) : null}
                       </td>
 
+                      {/* Which source found it. The only trace of this before
+                          was the domain under "Place", which is a different
+                          question and often a different answer. */}
+                      <td className="whitespace-nowrap px-[var(--gap)] py-[var(--gap-tight)]">
+                        <span className="mono text-[var(--text-micro)] text-[var(--ink-soft)]">
+                          {row.posting.source_id}
+                        </span>
+                      </td>
+
                       <td className="px-[var(--gap)] py-[var(--gap-tight)] text-[var(--ink-soft)]">
                         {row.posting.location}
                         <div className="mono text-[var(--text-micro)] text-[var(--ink-faint)]">
@@ -185,48 +264,55 @@ export default function ResultsScreen() {
                         {formatDate(row.posting.deadline, i18n.language)}
                       </td>
 
-                      <td className="px-[var(--gap)] py-[var(--gap-tight)]">
-                        {/* The select carries the status colour itself rather
-                            than sitting next to a badge repeating it: one
-                            control, one statement, and it still works from a
-                            keyboard. */}
-                        <select
-                          className="field max-w-[9rem] py-[0.15rem] text-[var(--text-micro)] font-semibold"
-                          aria-label={`${t('results.status')} — ${row.posting.title}`}
-                          value={row.status}
-                          style={{
-                            color: `var(--status-${row.status})`,
-                            background: `var(--status-${row.status}-soft)`,
-                            borderColor: `var(--status-${row.status})`,
-                          }}
-                          onChange={(event) =>
-                            move.mutate({
-                              key: row.dedup_key,
-                              next: event.target.value as ApplicationStatus,
-                            })
-                          }
-                        >
-                          {BOARD_ORDER.map((value) => (
-                            <option key={value} value={value}>
-                              {t(`status.${value}`)}
-                            </option>
-                          ))}
-                        </select>
+                      {/* Two answers while it is undecided, a plain statement of
+                          fact once it is not. Setting the status is the
+                          tracker's job from here on. */}
+                      <td className="whitespace-nowrap px-[var(--gap)] py-[var(--gap-tight)]">
+                        {undecided(row) ? (
+                          <div className="flex flex-wrap gap-[var(--gap-hair)]">
+                            <button
+                              type="button"
+                              className="btn btn-quiet px-[var(--gap-tight)] py-[0.15rem] text-[var(--text-micro)]"
+                              style={{ color: 'var(--ok)', borderColor: 'var(--ok)' }}
+                              aria-label={`${t('results.keep')} — ${row.posting.title}`}
+                              onClick={() => keep(row.dedup_key)}
+                            >
+                              {t('results.keep')}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-quiet px-[var(--gap-tight)] py-[0.15rem] text-[var(--text-micro)]"
+                              style={{ color: 'var(--ink-faint)' }}
+                              aria-label={`${t('results.discard')} — ${row.posting.title}`}
+                              onClick={() =>
+                                move.mutate({ key: row.dedup_key, next: 'skipped' })
+                              }
+                            >
+                              {t('results.discard')}
+                            </button>
+                          </div>
+                        ) : (
+                          <StatusPill status={row.status} />
+                        )}
                       </td>
 
                       <td className="whitespace-nowrap px-[var(--gap)] py-[var(--gap-tight)] text-right">
+                        {/* The pencil stays, but it no longer stands alone: a
+                            screen reader used to be handed the glyph itself. */}
                         <button
                           type="button"
-                          className="btn btn-bare"
+                          className="btn btn-bare gap-[var(--gap-hair)] text-[var(--text-micro)]"
                           onClick={() => setLetterFor(row)}
-                          title={t('results.letter')}
+                          aria-label={`${t('results.letter')} — ${row.posting.title}`}
                         >
-                          ✎
+                          <span aria-hidden>✎</span>
+                          <span className="hidden sm:inline">{t('results.letter')}</span>
                         </button>
                         <button
                           type="button"
                           className="btn btn-bare"
                           style={{ color: 'var(--ink-faint)' }}
+                          aria-label={`${t('results.forget')} — ${row.posting.title}`}
                           title={t('results.forget')}
                           onClick={() => {
                             if (window.confirm(t('results.forgetSure'))) {
@@ -242,6 +328,20 @@ export default function ResultsScreen() {
                 })}
               </tbody>
             </table>
+          </div>
+        ) : null}
+
+        {/* Nothing undecided left on this page. Say where to go next rather
+            than leaving the user on a screen with nothing left to do on it. */}
+        {sifted ? (
+          <div className="mt-[var(--gap)] flex justify-end">
+            <button
+              type="button"
+              className="btn btn-primary py-[var(--gap-tight)]"
+              onClick={() => navigate('/tracker')}
+            >
+              {t('results.continueToTracker')} →
+            </button>
           </div>
         ) : null}
 

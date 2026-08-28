@@ -19,6 +19,7 @@ Two rules earned through false positives and are kept deliberately:
 
 from __future__ import annotations
 
+import hashlib
 import re
 import unicodedata
 from collections.abc import Iterable
@@ -31,14 +32,18 @@ from jobsheet.core.dates import days_ago
 from jobsheet.core.models import Posting, Workplace
 
 __all__ = [
+    "DREAM_FLAG",
+    "UNSTATED_CONTRACT_FLAG",
     "KeywordGroup",
     "Match",
     "Rejection",
     "SearchProfile",
     "flags_for",
     "fold",
+    "is_dream_employer",
     "location_matches",
     "match",
+    "profile_key",
     "rejection_for",
     "sentence_case",
 ]
@@ -119,6 +124,23 @@ class SearchProfile(BaseModel):
     excluded_employers: list[str] = Field(default_factory=list)
     excluded_employment_types: list[str] = Field(default_factory=list)
     excluded_schedules: list[str] = Field(default_factory=list)
+
+    # The contracts the user is actually after, said the positive way round.
+    #
+    # This is a second field rather than a rename of `excluded_employment_types`,
+    # and the reason is worth stating: a profile is stored as raw JSON validated
+    # by a model with `extra="forbid"`, so renaming a field breaks every profile
+    # already saved. `store.profiles.migrate_profile_payload` now exists to make
+    # that survivable next time; this field predates trusting it.
+    #
+    # Empty means "no opinion", which is the honest default -- most searches do
+    # not care, and a filter nobody asked for is how a search goes quiet.
+    wanted_employment_types: list[str] = Field(default_factory=list)
+
+    # Employers the user would take a call from today. These never reject
+    # anything and never rank anything: they put a mark on the row, so the one
+    # ad worth reading first is visible in a spreadsheet of ninety.
+    dream_employers: list[str] = Field(default_factory=list)
 
     # Terms that override `excluded_employment_types`. This exists because of a
     # real trap: in Croatian, "na neodređeno" (permanent) literally contains
@@ -220,6 +242,17 @@ def rejection_for(
     if contract and banned and not allowed:
         return Rejection(code="employment_type", detail=posting.employment_type or banned)
 
+    # Asked for a kind of contract and the ad names a different one: drop it.
+    # Asked, and the ad names none at all: keep it and say so. Half the feeds
+    # here omit the field entirely, so refusing those would throw away most of
+    # the search to enforce a preference -- the flag lets the user judge instead.
+    if (
+        profile.wanted_employment_types
+        and contract
+        and not _first_hit(contract, profile.wanted_employment_types)
+    ):
+        return Rejection(code="employment_type_not_wanted", detail=posting.employment_type)
+
     schedule = fold(posting.raw.get("schedule", ""))
     if schedule and (bad := _first_hit(schedule, profile.excluded_schedules)):
         return Rejection(code="schedule", detail=str(posting.raw.get("schedule") or bad))
@@ -245,10 +278,45 @@ def rejection_for(
     return None
 
 
+DREAM_FLAG = "⭐ dream"
+UNSTATED_CONTRACT_FLAG = "contract type not stated"
+
+
+def is_dream_employer(posting: Posting, profile: SearchProfile) -> bool:
+    """Whether this ad is from one of the employers the user is hoping for.
+
+    Compared through `normalize_company` rather than as a plain word, because
+    the name the user typed is the one they say out loud and the name in the
+    feed has `d.o.o.` on the end. Substring matching is kept as well: somebody
+    who wrote "Ericsson" means every Ericsson.
+    """
+    from jobsheet.core.company import normalize_company
+
+    if not profile.dream_employers or not posting.company:
+        return False
+    theirs = normalize_company(posting.company)
+    if not theirs:
+        return False
+    return any(
+        (mine := normalize_company(wanted)) and (mine == theirs or mine in theirs)
+        for wanted in profile.dream_employers
+    )
+
+
 def flags_for(posting: Posting, profile: SearchProfile, *, today: date | None = None) -> list[str]:
     """Soft warnings to show beside the ad. These never reject anything."""
     text = fold(" ".join([posting.title, posting.description, str(posting.raw.get("notes", ""))]))
     found = [label for label, terms in profile.flags.items() if _first_hit(text, terms)]
+
+    # First in the list, because the note is read left to right and this is the
+    # only flag that means "read this one".
+    if is_dream_employer(posting, profile):
+        found.insert(0, DREAM_FLAG)
+
+    # The other half of the `wanted_employment_types` rule: an ad that survived
+    # only because it said nothing says so on its own row.
+    if profile.wanted_employment_types and not posting.employment_type.strip():
+        found.append(UNSTATED_CONTRACT_FLAG)
 
     age = days_ago(posting.posted_at, today=today or date.today())
     if not posting.deadline and age is not None and age > profile.max_age_days:
@@ -277,3 +345,19 @@ def sentence_case(text: str) -> str:
     words = [w.upper() if w.strip(".,:;()/-") in _ACRONYMS else w for w in text.lower().split(" ")]
     joined = " ".join(words)
     return joined[:1].upper() + joined[1:]
+
+
+def profile_key(profile: SearchProfile) -> str:
+    """A short, stable fingerprint of what a search is looking for.
+
+    Used to scope the memory of ads a hard filter turned away. Remembering that
+    decision is what stops the same ad costing a detail request on every run --
+    but the decision is only valid for the search that made it. Change what you
+    are looking for and the fingerprint changes, the memory stops matching, and
+    every ad it held gets another hearing.
+
+    It errs towards forgetting: reordering a keyword list changes the key even
+    though the search is the same. That costs one run of re-checking. The
+    opposite error would bury an ad the user has just asked for.
+    """
+    return hashlib.sha256(profile.model_dump_json().encode()).hexdigest()[:16]

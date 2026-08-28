@@ -26,18 +26,24 @@ import type {
   AppSettings,
   AuthStatus,
   Board,
+  DbRun,
   ExportReport,
+  FolderListing,
   HistoryStep,
   JobRow,
   LayoutVocabulary,
+  PlaceSuggestions,
   PostingPage,
   RunResults,
   RunSummary,
   SearchProfile,
   SearchSetup,
+  SeenCompany,
   SheetLayout,
   SourceHealth,
   SourceManifest,
+  SourceProgress,
+  WorkbookChange,
   WorkbookState,
 } from './types';
 
@@ -165,6 +171,14 @@ const query = (params: Record<string, string | number | undefined>): string => {
 
 export const api = {
   settings: () => request<AppSettings>('/api/settings'),
+  /** The folders inside one folder, for the picker. Empty path = where to start. */
+  folders: (path = '') => request<FolderListing>(`/api/settings/folders${query({ path })}`),
+  /** Point this account at a different workbook, optionally taking the file along. */
+  setWorkbook: (path: string, move = false) =>
+    request<WorkbookChange>('/api/settings/workbook', {
+      method: 'PUT',
+      body: JSON.stringify({ path, move }),
+    }),
 
   // ---- who is here ------------------------------------------------------
   auth: {
@@ -200,6 +214,24 @@ export const api = {
       }),
   },
 
+  // ---- what the wizard suggests -----------------------------------------
+
+  /**
+   * Places to offer for a location or county field.
+   *
+   * Served rather than bundled: the table is five hundred names, and the server
+   * answering is on this machine. `kind` narrows it -- "county" for the region
+   * field, "city" where only a town makes sense, empty for everything.
+   */
+  places: (q = '', kind: '' | 'city' | 'county' = '') =>
+    request<PlaceSuggestions>(`/api/places${query({ q, kind })}`),
+
+  /** Employers this account has already collected ads from. */
+  companies: (q = '', limit = 20) =>
+    request<{ companies: SeenCompany[]; total: number }>(
+      `/api/postings/companies${query({ q, limit })}`,
+    ),
+
   // ---- sources ----------------------------------------------------------
   sources: () =>
     request<{ sources: SourceManifest[]; countries: string[] }>('/api/sources'),
@@ -219,16 +251,33 @@ export const api = {
   cancelRun: (id: string) =>
     request<{ stopped: boolean }>(`/api/search/${id}/cancel`, { method: 'POST' }),
 
-  /** The live commentary. Returns the unsubscribe function. */
+  /**
+   * The live commentary. Returns the unsubscribe function.
+   *
+   * Two channels on one stream. `progress` is the prose; `state` is one
+   * source's position, which is what the bars are drawn from. Both replay from
+   * the start when a page reconnects, so a reload mid-search does not come back
+   * to an empty log and empty bars.
+   */
   watchRun(
     id: string,
     onLine: (line: string) => void,
     onEnd: (phase: string) => void,
+    onState?: (progress: SourceProgress) => void,
   ): () => void {
     const source = new EventSource(
       `/api/search/${id}/stream?token=${encodeURIComponent(sessionToken())}`,
     );
     source.addEventListener('progress', (event) => onLine((event as MessageEvent).data));
+    source.addEventListener('state', (event) => {
+      if (!onState) return;
+      try {
+        onState(JSON.parse((event as MessageEvent).data) as SourceProgress);
+      } catch {
+        // A malformed frame costs one bar update. It must never take down the
+        // stream, which is also carrying the log the user is reading.
+      }
+    });
     source.addEventListener('end', (event) => {
       onEnd((event as MessageEvent).data);
       source.close();
@@ -244,9 +293,14 @@ export const api = {
     q?: string;
     status?: string;
     source?: string;
+    /** The `runs` row id, to narrow the table to one search. */
+    run?: string;
     limit?: number;
     offset?: number;
   }) => request<PostingPage>(`/api/postings${query(params)}`),
+  /** Past searches as recorded on disk. These outlive the process; `runs()` does not. */
+  searchRuns: (limit = 20) =>
+    request<DbRun[]>(`/api/postings/runs${query({ limit })}`),
   posting: (dedupKey: string) =>
     request<JobRow>(`/api/postings/one${query({ dedup_key: dedupKey })}`),
   forget: (dedupKey: string) =>
