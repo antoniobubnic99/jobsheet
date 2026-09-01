@@ -5,6 +5,22 @@ All notable changes to this project are recorded here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- The read-only summary on the front page now names the employers as well: the
+  ones you are hoping for and the ones you are skipping. The wizard had asked
+  for both since 0.1.0 while the summary showed neither, so there was no way to
+  see from it what would be starred and what would be thrown away. An empty list
+  is still a missing row rather than an empty one.
+
+### Changed
+
+- `softprops/action-gh-release` moved from v2 to v3, which runs on Node 24. The
+  0.1.0 release run was the first time that job had ever executed, and it was
+  the only action still reported as running on the deprecated Node 20.
+
 ## [0.1.0] — 2026-09-01
 
 First public release.
