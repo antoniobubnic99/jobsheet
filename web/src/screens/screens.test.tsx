@@ -378,6 +378,9 @@ describe('the front page and the sifting', () => {
     expect(screen.getByText('Rijeka')).toBeInTheDocument();
     expect(screen.getByText('permanent')).toBeInTheDocument();
     expect(screen.getByText('hzz')).toBeInTheDocument();
+    // Employers are optional, so an empty list is a missing row, not an empty one.
+    expect(screen.queryByText('Hoping for')).not.toBeInTheDocument();
+    expect(screen.queryByText('Skipping')).not.toBeInTheDocument();
     // Nothing on it is typeable.
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
@@ -405,6 +408,32 @@ describe('the front page and the sifting', () => {
     render(wrap(<HomeScreen />));
     expect(await screen.findByText(/GIS: gis/)).toBeInTheDocument();
     expect(screen.queryByText('Contract types')).not.toBeInTheDocument();
+  });
+
+  it('the summary names the employers, both the starred and the skipped', async () => {
+    // The wizard asks for both and the summary showed neither, so a reader had
+    // no way to tell what would be starred from what would be thrown away.
+    const { payload } = RESPONSES['/api/profiles/setup/default'] as {
+      payload: { profile: Record<string, unknown> };
+    };
+    overrides['/api/profiles/setup/default'] = {
+      name: 'default',
+      kind: 'setup',
+      payload: {
+        ...payload,
+        profile: {
+          ...payload.profile,
+          dream_employers: ['Hidroelektra'],
+          excluded_employers: ['Agencija X'],
+        },
+      },
+    };
+
+    render(wrap(<HomeScreen />));
+    expect(await screen.findByText('Hoping for')).toBeInTheDocument();
+    expect(screen.getByText('Hidroelektra')).toBeInTheDocument();
+    expect(screen.getByText('Skipping')).toBeInTheDocument();
+    expect(screen.getByText('Agencija X')).toBeInTheDocument();
   });
 
   it('the results table says which source found each job', async () => {

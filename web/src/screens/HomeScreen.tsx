@@ -160,6 +160,14 @@ export default function HomeScreen() {
               value={list(profile.wanted_employment_types)}
             />
             <Fact
+              label={t('welcome.summary.dream')}
+              value={list(profile.dream_employers)}
+            />
+            <Fact
+              label={t('welcome.summary.skip')}
+              value={list(profile.excluded_employers)}
+            />
+            <Fact
               label={t('welcome.summary.sources')}
               value={list(payload?.sources.map((one) => one.source_id))}
             />
