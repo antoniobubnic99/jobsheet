@@ -348,6 +348,32 @@ class TestMergeFromSheet:
         assert tracker.status_of(key(99)) is ApplicationStatus.APPLIED
         assert [row.dedup_key for row in db.all_rows()] == [key(99)]
 
+    def test_the_same_ad_twice_in_one_sheet_is_adopted_once(
+        self, db: Database, tracker: Tracker
+    ) -> None:
+        """A sheet can carry the same ad twice, and it lands as one job.
+
+        Nothing here had covered a repeated key before. It is safe from two
+        directions -- `save_row` upserts, and it deliberately leaves the status
+        alone -- so the row cannot be duplicated and the second copy cannot undo
+        the first. That safety is what this test pins down.
+        """
+        merge_from_sheet(
+            tracker,
+            [
+                job(99, status=ApplicationStatus.APPLIED),
+                job(99, status=ApplicationStatus.INTERVIEW),
+            ],
+        )
+
+        assert [row.dedup_key for row in db.all_rows()] == [key(99)]
+        assert tracker.status_of(key(99)) is ApplicationStatus.INTERVIEW
+        # Each copy is a real move, in order, with no reset in between.
+        assert [(step.from_status, step.to_status) for step in tracker.history(key(99))] == [
+            (ApplicationStatus.NEW, ApplicationStatus.APPLIED),
+            (ApplicationStatus.APPLIED, ApplicationStatus.INTERVIEW),
+        ]
+
     def test_an_adopted_row_gets_a_dated_move_rather_than_a_silent_one(
         self, tracker: Tracker
     ) -> None:

@@ -191,10 +191,17 @@ def merge_from_sheet(tracker: Tracker, rows: list[JobRow]) -> list[StatusChange]
     status the sheet carries is recorded as a proper move, with a date, instead
     of appearing as though it had always been that way.
     """
+    # One query for the whole sheet rather than one per row: a restored workbook
+    # is hundreds of rows, and `knows` is a round trip each time. Adopted keys are
+    # added as we go, which spares a repeated key a second pointless write; it
+    # changes nothing else, since `save_row` upserts and leaves the status alone.
+    known = tracker.db.known_keys()
+
     changes: list[StatusChange] = []
     for row in rows:
-        if not tracker.knows(row.dedup_key):
+        if row.dedup_key not in known:
             tracker.db.save_row(row.model_copy(update={"status": ApplicationStatus.NEW}))
+            known.add(row.dedup_key)
         if change := tracker.set_status(row.dedup_key, row.status, note="edited in the workbook"):
             changes.append(change)
         if row.user_values:
