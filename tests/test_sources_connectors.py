@@ -601,11 +601,22 @@ class TestSelekcija:
         assert len(found) == 1
 
 
+# Recorded from the live result page on 2026-09-03, trimmed to one item. The
+# shape matters: the title lives in `resultTitle`, reads "KIND - Institution",
+# and the score span carries a `style` attribute.
 NN_RESULTS = """
 <div class="searchListItem">
-  <a href="/clanci/oglasi/o1234.html"><span class="searchListItemTitle">
-  Grad Samobor<span class="score">0</span></span></a>
-  <span>22. 8. 2026</span>
+  <table><tr><td class="first">1.&nbsp;</td><td>
+    <div class="resultTitle">
+      <a href="/clanci/oglasi/o1234.html" target="_self">
+        JAVNI NATJEČAJ - Grad Samobor <span class="score" style="display:none;">0</span>
+      </a>
+    </div>
+  </td></tr>
+  <tr><td class="first"></td><td>
+    <div class="official-number-and-date">NN 96/2026, (5959), oglasni dio, natječaji za radna mjesta, 22.8.2026.</div>
+    <span class="snippet">Klasa: 112-02/26-01/2 Na temelju članka 7. st...</span>
+  </td></tr></table>
 </div>
 """
 
@@ -659,6 +670,25 @@ class TestNarodneNovine:
             return_value=httpx.Response(200, text=stub)
         )
         assert not await NarodneNovineSource().fetch({"terms": "geodetski"}, ctx)
+
+    @respx.mock
+    async def test_the_kind_of_notice_is_split_off_the_institution(
+        self, ctx: FetchContext
+    ) -> None:
+        """The heading reads "KIND - Institution"; the company is the second half.
+
+        Keeping the kind matters beyond tidiness: "PONISTENJE NATJECAJA" is a
+        vacancy being withdrawn, not offered.
+        """
+        respx.get(url__startswith="https://narodne-novine.nn.hr/search.aspx").mock(
+            return_value=httpx.Response(200, text=NN_RESULTS)
+        )
+        respx.get("https://narodne-novine.nn.hr/clanci/oglasi/o1234.html").mock(
+            return_value=httpx.Response(200, text=NN_BODY)
+        )
+        (found,) = await NarodneNovineSource().fetch({"terms": "geodetski"}, ctx)
+        assert found.company == "Grad Samobor"
+        assert found.raw["notice_kind"] == "JAVNI NATJEČAJ"
 
     async def test_no_search_words_means_no_requests(self, ctx: FetchContext) -> None:
         assert await NarodneNovineSource().fetch({"terms": ""}, ctx) == []

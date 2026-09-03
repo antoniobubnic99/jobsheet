@@ -105,17 +105,12 @@ TARGETS = [
     Target("hzz", {"counties": [4]}, titled=0.0),
     Target("posao_hr", {}),
     Target("selekcija", {"days": 45}),
-    Target(
-        "narodne_novine",
-        {"terms": "geodetski", "days": 60},
-        broken=(
-            "NN result parsing has drifted: the institution is never found, titles "
-            "come back as sentence fragments, and the result count is identical at "
-            "30, 90 and 365 days -- so paging is not happening. Documented "
-            "behaviour was geodet -> 0 and geodetski -> 39; on 2026-08-25 it was "
-            "2 and 1. Needs the result page re-read against current markup."
-        ),
-    ),
+    # "odgojitelj" rather than "geodetski" on purpose. This source drops notices
+    # that only point at Selekcija.gov.hr, and it opens no more than `max_enrich`
+    # of them -- three, here. Every one of the top "geodetski" hits is a state
+    # body publishing such a stub, so that search returns nothing even when the
+    # parser is perfect. Municipal nursery posts are advertised in full.
+    Target("narodne_novine", {"terms": "odgojitelj", "days": 60}),
 ]
 
 TARGETS_BY_ID = {target.source_id: target for target in TARGETS}

@@ -6,8 +6,10 @@ It is also the most laborious source in the project, for three reasons:
 * **The search matches whole words, not prefixes.** `geodet` returns nothing;
   `geodetski` returns dozens. Search terms must be full word forms, which is the
   opposite of how the local keyword filter works.
-* **The title is never the job title.** It is always the institution, so the post
-  has to be mined out of legal prose -- hence the anchor phrases below.
+* **The title is never the job title.** It reads "KIND OF NOTICE - Institution",
+  so the post itself has to be mined out of legal prose -- hence the anchor
+  phrases below. The kind is kept because it separates an opening from a
+  withdrawal (`PONISTENJE NATJECAJA`).
 * **Every result page must be opened** to find the job title at all, so this
   source is capped harder than the others.
 
@@ -39,11 +41,22 @@ SEARCH = "https://narodne-novine.nn.hr/search.aspx"
 
 _ITEM_SPLIT = 'class="searchListItem"'
 _LINK = re.compile(r'href="(/clanci/oglasi/o\d+\.html)"')
-_TITLE = re.compile(r'class="searchListItemTitle"[^>]*>(.*?)</', re.S)
+# The result item was rebuilt at some point between 0.1.0 and 2026-09-03: the
+# title moved out of `searchListItemTitle` into a `resultTitle` div wrapping the
+# anchor, and it now reads "NOTICE TYPE - Institution" rather than the bare
+# institution. The old pattern matched nothing at all, so every notice came back
+# with an empty company and a title mined from prose.
+_TITLE = re.compile(r'class="resultTitle".*?<a[^>]*>(.*?)</a>', re.S)
 _DATE = re.compile(r"(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})")
 # A hidden relevance score sits inside the title markup; leaving it in produces
-# titles like "Grad Samobor 0".
-_SCORE = re.compile(r'<span class="score">.*?</span>', re.S)
+# titles like "Grad Samobor 0". It carries a `style` attribute now, which the
+# old exact-match pattern did not allow -- hence `[^>]*`.
+_SCORE = re.compile(r'<span class="score"[^>]*>.*?</span>', re.S)
+# "JAVNI NATJECAJ - Grad Rab" -> the institution is what comes after the kind of
+# notice. The kind is upper case, which is what keeps this off the institution
+# name itself; it is kept in `raw` because it says whether a notice is an opening
+# or, for "PONISTENJE NATJECAJA", the withdrawal of one.
+_NOTICE_KIND = re.compile(r"^([A-ZČĆŽŠĐ][A-ZČĆŽŠĐ\s]{2,40})\s-\s")
 _BODY = re.compile(r'<div class="og-content">(.*?)</div>', re.S)
 
 # Ordered: the earlier the phrase, the more likely it introduces the real post.
@@ -125,7 +138,7 @@ class NarodneNovineSource(Source):
 
         ctx.report(f"Reading Narodne novine ({len(terms)} search words)")
 
-        found: dict[str, tuple[str, Any]] = {}
+        found: dict[str, tuple[str, Any, str]] = {}
         for term in terms:
             query = urllib.parse.urlencode(
                 {
@@ -160,14 +173,25 @@ class NarodneNovineSource(Source):
                 if url in found:
                     continue
                 title_match = _TITLE.search(chunk)
-                institution = strip_html(title_match.group(1)) if title_match else ""
+                heading = (
+                    re.sub(r"\s+", " ", strip_html(title_match.group(1))).strip()
+                    if title_match
+                    else ""
+                )
+                kind_match = _NOTICE_KIND.match(heading)
+                kind = kind_match.group(1).strip() if kind_match else ""
+                institution = _NOTICE_KIND.sub("", heading)
                 date_match = _DATE.search(chunk)
-                found[url] = (institution, parse_date(date_match.group(1)) if date_match else None)
+                found[url] = (
+                    institution,
+                    parse_date(date_match.group(1)) if date_match else None,
+                    kind,
+                )
 
         ctx.report(f"  {len(found)} notices found; opening up to {cap}")
 
         postings: list[Posting] = []
-        for url, (institution, published) in list(found.items())[:cap]:
+        for url, (institution, published, kind) in list(found.items())[:cap]:
             try:
                 page = await ctx.http.get_text(url)
             except Exception as error:
@@ -196,7 +220,7 @@ class NarodneNovineSource(Source):
                     employment_type=employment.group(0) if employment else "",
                     education=education.group(0) if education else "",
                     posted_at=published,
-                    raw={"institution": institution},
+                    raw={"institution": institution, "notice_kind": kind},
                 )
             )
 

@@ -178,15 +178,7 @@ yet.
 | **HZZ Burza rada** | 🇭🇷 | every vacancy registered with the Croatian Employment Service, by county |
 | **Posao.hr** | 🇭🇷 | the 30 newest ads, whole country |
 | **Selekcija.gov.hr** | 🇭🇷 | public competitions for civil-service posts |
-| **Narodne novine** | 🇭🇷 | public-sector vacancy notices in the official gazette — ⚠ **known issue**, see below |
-
-> ⚠ **Narodne novine is currently broken.** Its result parsing has drifted
-> against the site's present markup: the institution is never found, titles come
-> back as sentence fragments, and the result count is identical at 30, 90 and 365
-> days — so paging is not happening. The live test is marked `xfail` with the
-> full measurement rather than deleted, because an open failure with an
-> explanation is worth more than a tidy-looking list.
-> [Help fixing it is welcome.](CONTRIBUTING.md)
+| **Narodne novine** | 🇭🇷 | public-sector vacancy notices in the official gazette |
 
 ---
 

@@ -21,6 +21,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   0.1.0 release run was the first time that job had ever executed, and it was
   the only action still reported as running on the deprecated Node 20.
 
+### Fixed
+
+- **Narodne novine works again.** Its result page had been rebuilt: the title
+  moved out of `searchListItemTitle` into a `resultTitle` div, and the hidden
+  relevance score gained a `style` attribute the old pattern would not match. So
+  no institution was ever found, every notice came back with an empty company,
+  and the title had to be mined out of legal prose. The heading also reads
+  "KIND - Institution" now, so the kind of notice is split off and kept — it is
+  what tells an opening apart from a `PONIŠTENJE NATJEČAJA`, a withdrawal.
+  Measured against the live service: 26 of 26 notices parsed, up from none.
+- Two claims in the old known-issue text were **not** true when re-measured. The
+  date filter does work — the same search returns 12, 39 and 50 notices at 30, 90
+  and 365 days; the 50 is the page size, not a stuck filter.
+
+
 ## [0.1.0] — 2026-09-01
 
 First public release.
@@ -242,11 +257,6 @@ First public release.
 
 ### Known issues
 
-- **Narodne novine** result parsing has drifted against the site's current
-  markup: the institution is never found, titles come back as sentence fragments,
-  and the result count is identical at 30, 90 and 365 days, so paging is not
-  happening. The live test is marked `xfail` with the full measurement rather
-  than removed — see [docs/SOURCES.md](docs/SOURCES.md).
 - **Recruitee** has no live target with open roles; its contract test proves the
   endpoint and the parser but not a populated board. Override with
   `JOBSHEET_LIVE_RECRUITEE=<slug>` if you know one.
