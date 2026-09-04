@@ -161,7 +161,12 @@ jobs:
 
   pypi:
     name: Publish to PyPI
-    needs: build
+    # `windows_zip` is in here for one reason: publishing is the only step in
+    # this file that cannot be undone. PyPI refuses a version a second time,
+    # even after a deletion, so a ZIP that fails to build after the upload has
+    # gone through costs a version number. Failing first costs six minutes and
+    # a "Re-run failed jobs".
+    needs: [build, windows_zip]
     if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run
     runs-on: ubuntu-latest
     environment:
@@ -181,10 +186,10 @@ jobs:
 
   github_release:
     name: Cut the GitHub Release
-    # `windows_zip` is in here so the Release carries the portable build. If it
-    # is the only thing that fails, PyPI has already published and the version
-    # is spent -- fix it and use "Re-run failed jobs" on the same run rather
-    # than reaching for a new tag.
+    # `windows_zip` is named here as well as in `pypi`, rather than left to
+    # come along transitively, because this job downloads its artifact -- the
+    # dependency is real and reading it out of another job's `needs` is not
+    # how anyone should have to learn that.
     needs: [build, pypi, windows_zip]
     if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run
     runs-on: ubuntu-latest

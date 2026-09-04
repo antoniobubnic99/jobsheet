@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is starting the packaged server with the *embedded* interpreter and asking it
   for a page — the only interpreter whose opinion counts is the one that will
   run on the user's machine. A ZIP that cannot serve a page now fails the
-  release instead of reaching the page.
+  release instead of reaching the page — and it fails it *before* the upload to
+  PyPI, which is the one step in a release that cannot be taken back.
 - The read-only summary on the front page now names the employers as well: the
   ones you are hoping for and the ones you are skipping. The wizard had asked
   for both since 0.1.0 while the summary showed neither, so there was no way to
