@@ -15,7 +15,8 @@ It is also the most laborious source in the project, for three reasons:
 
 Notices that only point at Selekcija.gov.hr are dropped: state bodies publish a
 stub here and the real competition there, and keeping both means every such job
-appears twice.
+appears twice. A quarter of all results say so in the heading -- they are the
+kind "OBAVIJEST" -- and those are dropped without being opened at all.
 """
 
 from __future__ import annotations
@@ -64,6 +65,15 @@ _NOTICE_KIND = re.compile(r"^([A-ZČĆŽŠĐ][A-ZČĆŽŠĐ\s]{2,40})\s-\s")
 # diacritic-free spelling is allowed as well because the heading is only ever
 # read back from the wire.
 _WITHDRAWN = re.compile(r"PONIŠT|PONIST")
+# "OBAVIJEST - Ministarstvo ..." is not a competition but the announcement that
+# one is running in the central system. Measured over 520 live results on
+# 2026-09-04: 137 notices carry this kind (26%), across 30-plus institutions and
+# three spellings of it, and every single one of the 137 turned out to be a stub
+# whose body points at Selekcija.gov.hr -- nought exceptions. They were already
+# being thrown away by `_POINTS_AT_SELEKCIJA` below, but only after the page had
+# been fetched, so a quarter of the enrich budget went on notices that could
+# never yield a job. The heading says as much before any request is made.
+_ANNOUNCES_ELSEWHERE = re.compile(r"^OBAVIJEST")
 _BODY = re.compile(r'<div class="og-content">(.*?)</div>', re.S)
 
 # Ordered: the earlier the phrase, the more likely it introduces the real post.
@@ -147,6 +157,7 @@ class NarodneNovineSource(Source):
 
         found: dict[str, tuple[str, Any, str]] = {}
         withdrawn = 0
+        announcements = 0
         for term in terms:
             query = urllib.parse.urlencode(
                 {
@@ -194,6 +205,12 @@ class NarodneNovineSource(Source):
                     # that the enrich budget below goes to real openings.
                     withdrawn += 1
                     continue
+                if _ANNOUNCES_ELSEWHERE.match(kind):
+                    # A pointer at a competition running in the central system.
+                    # The body would be dropped anyway; skipping it here spends
+                    # the enrich budget on notices that can actually be a job.
+                    announcements += 1
+                    continue
                 institution = _NOTICE_KIND.sub("", heading)
                 date_match = _DATE.search(chunk)
                 found[url] = (
@@ -204,6 +221,8 @@ class NarodneNovineSource(Source):
 
         if withdrawn:
             ctx.report(f"  {withdrawn} withdrawn competitions skipped")
+        if announcements:
+            ctx.report(f"  {announcements} pointers at the central system skipped")
         ctx.report(f"  {len(found)} notices found; opening up to {cap}")
 
         postings: list[Posting] = []

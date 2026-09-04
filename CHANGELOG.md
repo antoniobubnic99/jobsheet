@@ -40,6 +40,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PONOVLJENI NATJEČAJ`, a competition run again, is kept. They are dropped
   before any page is opened, so the small enrichment budget goes to real
   openings rather than being spent on jobs that no longer exist.
+- **A quarter of the Narodne novine budget was going nowhere.** Notices of the
+  kind `OBAVIJEST` are not competitions but announcements that one is running in
+  the state's central system, and their body was already being discarded — after
+  a page request had been spent on it. Measured over 520 live notices: 137 carry
+  that kind (26 %), across more than thirty institutions and three spellings of
+  it, and every single one of the 137 was such a pointer. They are now dropped
+  from the heading alone, before any request. On a live run capped at three
+  pages this is the difference between three real openings and none, because the
+  first three hits had all been pointers.
 - Two claims in the old known-issue text were **not** true when re-measured. The
   date filter does work — the same search returns 12, 39 and 50 notices at 30, 90
   and 365 days; the 50 is the page size, not a stuck filter.

@@ -620,10 +620,10 @@ NN_RESULTS = """
 </div>
 """
 
-# Same shape, but the notice is a competition being called off. Measured on
-# 2026-09-04, the withdrawal reaches the reader under three different kinds, so
-# all three are exercised.
-NN_WITHDRAWN = """
+# Same shape, with the kind of notice left open. What NN calls a notice decides
+# whether it is opened at all -- a withdrawal and a pointer at the central system
+# are both dropped before any request -- so the kind is what the tests below vary.
+NN_RESULT_OF_KIND = """
 <div class="searchListItem">
   <table><tr><td class="first">1.&nbsp;</td><td>
     <div class="resultTitle">
@@ -720,7 +720,7 @@ class TestNarodneNovine:
     ) -> None:
         """A competition being called off was reaching the reader as an opening."""
         respx.get(url__startswith="https://narodne-novine.nn.hr/search.aspx").mock(
-            return_value=httpx.Response(200, text=NN_WITHDRAWN.format(kind=kind))
+            return_value=httpx.Response(200, text=NN_RESULT_OF_KIND.format(kind=kind))
         )
         page = respx.get("https://narodne-novine.nn.hr/clanci/oglasi/o9001.html").mock(
             return_value=httpx.Response(200, text=NN_BODY)
@@ -730,11 +730,61 @@ class TestNarodneNovine:
         # spend one of the few enrich slots on a job that does not exist.
         assert not page.called
 
+    @pytest.mark.parametrize(
+        "kind",
+        [
+            "OBAVIJEST",
+            "OBAVIJEST O JAVNOM NATJEČAJU",
+            "OBAVIJEST O JAVNIM NATJEČAJIMA",
+        ],
+    )
+    @respx.mock
+    async def test_a_pointer_at_the_central_system_is_not_opened(
+        self, ctx: FetchContext, kind: str
+    ) -> None:
+        """An "OBAVIJEST" only says a competition is running on Selekcija.
+
+        Measured over 520 live results on 2026-09-04: all 137 notices of this
+        kind were stubs, so the body filter dropped every one of them -- after
+        paying a request each. A quarter of the enrich budget went nowhere.
+        """
+        respx.get(url__startswith="https://narodne-novine.nn.hr/search.aspx").mock(
+            return_value=httpx.Response(200, text=NN_RESULT_OF_KIND.format(kind=kind))
+        )
+        page = respx.get("https://narodne-novine.nn.hr/clanci/oglasi/o9001.html").mock(
+            return_value=httpx.Response(200, text=NN_BODY)
+        )
+        assert not await NarodneNovineSource().fetch({"terms": "geodetski"}, ctx)
+        assert not page.called
+
+    @pytest.mark.parametrize(
+        "kind",
+        ["JAVNI NATJEČAJ", "NATJEČAJ", "PONOVLJENI NATJEČAJ", "OGLAS"],
+    )
+    @respx.mock
+    async def test_the_kinds_that_do_carry_a_job_survive(
+        self, ctx: FetchContext, kind: str
+    ) -> None:
+        """The guard against a filter that swallows openings.
+
+        Every kind here was seen carrying a real post in the same measurement.
+        "OGLAS" is in the list because it shares its first three letters with
+        nothing dropped -- but a filter written on a hunch could still catch it.
+        """
+        respx.get(url__startswith="https://narodne-novine.nn.hr/search.aspx").mock(
+            return_value=httpx.Response(200, text=NN_RESULT_OF_KIND.format(kind=kind))
+        )
+        respx.get("https://narodne-novine.nn.hr/clanci/oglasi/o9001.html").mock(
+            return_value=httpx.Response(200, text=NN_BODY)
+        )
+        (found,) = await NarodneNovineSource().fetch({"terms": "geodetski"}, ctx)
+        assert found.company == "Grad Samobor"
+
     @respx.mock
     async def test_a_repeated_competition_is_still_a_job(self, ctx: FetchContext) -> None:
         """"PONOVLJENI NATJEČAJ" shares no stem with the withdrawal; it is an opening."""
         respx.get(url__startswith="https://narodne-novine.nn.hr/search.aspx").mock(
-            return_value=httpx.Response(200, text=NN_WITHDRAWN.format(kind="PONOVLJENI NATJEČAJ"))
+            return_value=httpx.Response(200, text=NN_RESULT_OF_KIND.format(kind="PONOVLJENI NATJEČAJ"))
         )
         respx.get("https://narodne-novine.nn.hr/clanci/oglasi/o9001.html").mock(
             return_value=httpx.Response(200, text=NN_BODY)
