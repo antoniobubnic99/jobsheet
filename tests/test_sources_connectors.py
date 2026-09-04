@@ -620,6 +620,21 @@ NN_RESULTS = """
 </div>
 """
 
+# Same shape, but the notice is a competition being called off. Measured on
+# 2026-09-04, the withdrawal reaches the reader under three different kinds, so
+# all three are exercised.
+NN_WITHDRAWN = """
+<div class="searchListItem">
+  <table><tr><td class="first">1.&nbsp;</td><td>
+    <div class="resultTitle">
+      <a href="/clanci/oglasi/o9001.html" target="_self">
+        {kind} - Grad Samobor <span class="score" style="display:none;">0</span>
+      </a>
+    </div>
+  </td></tr></table>
+</div>
+"""
+
 NN_BODY = """
 <div class="og-content">
 Na temelju clanka 17. Zakona o sluzbenicima i namjestenicima u lokalnoj
@@ -677,8 +692,8 @@ class TestNarodneNovine:
     ) -> None:
         """The heading reads "KIND - Institution"; the company is the second half.
 
-        Keeping the kind matters beyond tidiness: "PONISTENJE NATJECAJA" is a
-        vacancy being withdrawn, not offered.
+        Splitting it off matters beyond tidiness: the kind is what the test
+        below reads to throw a withdrawn competition away.
         """
         respx.get(url__startswith="https://narodne-novine.nn.hr/search.aspx").mock(
             return_value=httpx.Response(200, text=NN_RESULTS)
@@ -689,6 +704,43 @@ class TestNarodneNovine:
         (found,) = await NarodneNovineSource().fetch({"terms": "geodetski"}, ctx)
         assert found.company == "Grad Samobor"
         assert found.raw["notice_kind"] == "JAVNI NATJEČAJ"
+
+    @pytest.mark.parametrize(
+        "kind",
+        [
+            "PONIŠTENJE NATJEČAJA",
+            "ODLUKA O PONIŠTENJU NATJEČAJA",
+            "DJELOMIČNO PONIŠTENJE NATJEČAJA",
+            "PONISTENJE NATJECAJA",
+        ],
+    )
+    @respx.mock
+    async def test_a_withdrawn_competition_is_not_a_job(
+        self, ctx: FetchContext, kind: str
+    ) -> None:
+        """A competition being called off was reaching the reader as an opening."""
+        respx.get(url__startswith="https://narodne-novine.nn.hr/search.aspx").mock(
+            return_value=httpx.Response(200, text=NN_WITHDRAWN.format(kind=kind))
+        )
+        page = respx.get("https://narodne-novine.nn.hr/clanci/oglasi/o9001.html").mock(
+            return_value=httpx.Response(200, text=NN_BODY)
+        )
+        assert not await NarodneNovineSource().fetch({"terms": "geodetski"}, ctx)
+        # Dropped from the result list, not after the fact: opening it would
+        # spend one of the few enrich slots on a job that does not exist.
+        assert not page.called
+
+    @respx.mock
+    async def test_a_repeated_competition_is_still_a_job(self, ctx: FetchContext) -> None:
+        """"PONOVLJENI NATJEČAJ" shares no stem with the withdrawal; it is an opening."""
+        respx.get(url__startswith="https://narodne-novine.nn.hr/search.aspx").mock(
+            return_value=httpx.Response(200, text=NN_WITHDRAWN.format(kind="PONOVLJENI NATJEČAJ"))
+        )
+        respx.get("https://narodne-novine.nn.hr/clanci/oglasi/o9001.html").mock(
+            return_value=httpx.Response(200, text=NN_BODY)
+        )
+        (found,) = await NarodneNovineSource().fetch({"terms": "geodetski"}, ctx)
+        assert found.company == "Grad Samobor"
 
     async def test_no_search_words_means_no_requests(self, ctx: FetchContext) -> None:
         assert await NarodneNovineSource().fetch({"terms": ""}, ctx) == []

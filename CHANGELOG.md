@@ -31,6 +31,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "KIND - Institution" now, so the kind of notice is split off and kept — it is
   what tells an opening apart from a `PONIŠTENJE NATJEČAJA`, a withdrawal.
   Measured against the live service: 26 of 26 notices parsed, up from none.
+- A **withdrawn competition is no longer offered as a job.** Narodne novine
+  publishes the calling-off of a vacancy in the same section as the vacancy
+  itself, and it was reaching the spreadsheet as an opening to apply for.
+  Measured over 250 live notices, the withdrawal arrives under three different
+  headings — `PONIŠTENJE NATJEČAJA`, `ODLUKA O PONIŠTENJU NATJEČAJA` and
+  `DJELOMIČNO PONIŠTENJE NATJEČAJA` — so all three are dropped, while a
+  `PONOVLJENI NATJEČAJ`, a competition run again, is kept. They are dropped
+  before any page is opened, so the small enrichment budget goes to real
+  openings rather than being spent on jobs that no longer exist.
 - Two claims in the old known-issue text were **not** true when re-measured. The
   date filter does work — the same search returns 12, 39 and 50 notices at 30, 90
   and 365 days; the 50 is the page size, not a stuck filter.

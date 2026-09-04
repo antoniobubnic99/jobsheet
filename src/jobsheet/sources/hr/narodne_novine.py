@@ -9,7 +9,7 @@ It is also the most laborious source in the project, for three reasons:
 * **The title is never the job title.** It reads "KIND OF NOTICE - Institution",
   so the post itself has to be mined out of legal prose -- hence the anchor
   phrases below. The kind is kept because it separates an opening from a
-  withdrawal (`PONISTENJE NATJECAJA`).
+  withdrawal, and withdrawals are dropped outright.
 * **Every result page must be opened** to find the job title at all, so this
   source is capped harder than the others.
 
@@ -55,8 +55,15 @@ _SCORE = re.compile(r'<span class="score"[^>]*>.*?</span>', re.S)
 # "JAVNI NATJECAJ - Grad Rab" -> the institution is what comes after the kind of
 # notice. The kind is upper case, which is what keeps this off the institution
 # name itself; it is kept in `raw` because it says whether a notice is an opening
-# or, for "PONISTENJE NATJECAJA", the withdrawal of one.
+# or the withdrawal of one.
 _NOTICE_KIND = re.compile(r"^([A-ZČĆŽŠĐ][A-ZČĆŽŠĐ\s]{2,40})\s-\s")
+# A withdrawn competition is not a job. Measured over 250 live results on
+# 2026-09-04, the withdrawal arrives under three different kinds -- "PONISTENJE
+# NATJECAJA", "ODLUKA O PONISTENJU NATJECAJA" and "DJELOMICNO PONISTENJE
+# NATJECAJA" -- so the stem is what is matched, not any one of them. The
+# diacritic-free spelling is allowed as well because the heading is only ever
+# read back from the wire.
+_WITHDRAWN = re.compile(r"PONIŠT|PONIST")
 _BODY = re.compile(r'<div class="og-content">(.*?)</div>', re.S)
 
 # Ordered: the earlier the phrase, the more likely it introduces the real post.
@@ -139,6 +146,7 @@ class NarodneNovineSource(Source):
         ctx.report(f"Reading Narodne novine ({len(terms)} search words)")
 
         found: dict[str, tuple[str, Any, str]] = {}
+        withdrawn = 0
         for term in terms:
             query = urllib.parse.urlencode(
                 {
@@ -180,6 +188,12 @@ class NarodneNovineSource(Source):
                 )
                 kind_match = _NOTICE_KIND.match(heading)
                 kind = kind_match.group(1).strip() if kind_match else ""
+                if _WITHDRAWN.search(kind):
+                    # A competition being called off, offered to the reader as a
+                    # job. Dropped here rather than after the page is opened, so
+                    # that the enrich budget below goes to real openings.
+                    withdrawn += 1
+                    continue
                 institution = _NOTICE_KIND.sub("", heading)
                 date_match = _DATE.search(chunk)
                 found[url] = (
@@ -188,6 +202,8 @@ class NarodneNovineSource(Source):
                     kind,
                 )
 
+        if withdrawn:
+            ctx.report(f"  {withdrawn} withdrawn competitions skipped")
         ctx.report(f"  {len(found)} notices found; opening up to {cap}")
 
         postings: list[Posting] = []
