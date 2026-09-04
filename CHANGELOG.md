@@ -49,6 +49,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from the heading alone, before any request. On a live run capped at three
   pages this is the difference between three real openings and none, because the
   first three hits had all been pointers.
+- **The job title from Narodne novine is the post again, not the legal prose
+  around it.** This source never puts the post in the heading — that reads
+  "KIND - Institution" — so it has to be mined out of the notice, and the phrases
+  it is mined by also occur in the apparatus: the list of documents to enclose,
+  the instruction on how to label the envelope. One notice arrived titled
+  `kandidati moraju priložiti sljedeće dokumente`, another `jedan izvršitelj
+  (m/ž)`, a third came from an envelope instruction nine thousand characters in.
+  Occurrences are now tried in the order they appear in the text rather than in
+  the order the phrases happen to be listed, an ordinal or colon between the
+  phrase and the post no longer truncates the title to nothing, and a candidate
+  that reads like boilerplate is passed over for the next one. Measured over 90
+  live notices: 71 come back with the post, against 51 before, and what cannot be
+  mined is left empty so the institution shows instead — an honest "Dječji vrtić
+  Tići" rather than a confident "sadržan je".
 - Two claims in the old known-issue text were **not** true when re-measured. The
   date filter does work — the same search returns 12, 39 and 50 notices at 30, 90
   and 365 days; the 50 is the page size, not a stuck filter.

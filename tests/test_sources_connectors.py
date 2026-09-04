@@ -29,7 +29,7 @@ from jobsheet.sources.boards.arbeitnow import ArbeitnowSource
 from jobsheet.sources.boards.remoteok import RemoteOkSource
 from jobsheet.sources.boards.remotive import RemotiveSource
 from jobsheet.sources.hr.hzz import HzzSource
-from jobsheet.sources.hr.narodne_novine import NarodneNovineSource
+from jobsheet.sources.hr.narodne_novine import NarodneNovineSource, _mine_job_title
 from jobsheet.sources.hr.posao_hr import PosaoHrSource
 from jobsheet.sources.hr.selekcija import SelekcijaSource
 from jobsheet.sources.rss import RssSource
@@ -794,3 +794,94 @@ class TestNarodneNovine:
 
     async def test_no_search_words_means_no_requests(self, ctx: FetchContext) -> None:
         assert await NarodneNovineSource().fetch({"terms": ""}, ctx) == []
+
+
+# Each of these was mined out of a live notice on 2026-09-04, trimmed to the
+# sentence that decides the title. The wrong answer in the comment is what the
+# reader actually used to get in the spreadsheet.
+class TestNarodneNovineJobTitle:
+    @pytest.mark.parametrize(
+        ("prose", "expected"),
+        [
+            # The plain case, and the one the old code already handled.
+            (
+                "raspisuje natjecaj za prijam u sluzbu na radno mjesto visi strucni "
+                "suradnik za prostorno uredenje u Upravnom odjelu",
+                "visi strucni suradnik",
+            ),
+            # An ordinal between the anchor and the post. `_STOP` cut at the digit
+            # and the title came back empty -- a fifth of all notices did.
+            (
+                "raspisuje natjecaj za radno mjesto 1. odgajatelj (m/z), na "
+                "neodredeno puno radno vrijeme",
+                "odgajatelj",
+            ),
+            # A colon and a dash in the same position, same outcome.
+            (
+                "raspisuje natjecaj za radno mjesto: – ucitelj edukator rehabilitator "  # noqa: RUF001
+                "(m/z) na neodredeno vrijeme",
+                "ucitelj edukator rehabilitator",
+            ),
+            # "za izbor I IMENOVANJE ravnatelja": the post is the head of the
+            # phrase, not the act of appointing to it.
+            (
+                "objavljuje natjecaj za izbor i imenovanje ravnatelja/ice Djecjeg "
+                "vrtica Tockica",
+                "ravnatelja/ice Djecjeg vrtica Tockica",
+            ),
+            # A head count hung off the end of a perfectly good title.
+            (
+                "za radno mjesto referent – materijalni knjigovoda/likvidator – "  # noqa: RUF001
+                "jedan izvrsitelj",
+                "referent – materijalni knjigovoda/likvidator",  # noqa: RUF001
+            ),
+            # The instruction on how to label the envelope, which used to arrive
+            # as the title in full: "odgojitelj - ne otvaraj".
+            (
+                "za radno mjesto odgojitelj – ne otvaraj",  # noqa: RUF001
+                "odgojitelj",
+            ),
+        ],
+    )
+    def test_the_post_is_mined_out_of_the_prose(self, prose: str, expected: str) -> None:
+        assert _mine_job_title(prose) == expected
+
+    @pytest.mark.parametrize(
+        "prose",
+        [
+            # The list of documents to enclose. The anchor sits in it, and the
+            # reader got "kandidati moraju priloziti sljedece dokumente".
+            "Uz prijavu za prijam u radni odnos kandidati moraju priloziti "
+            "sljedece dokumente: 1. zivotopis",
+            # A cross-reference to a numbered list rather than a name.
+            "za radno mjesto pod rednim brojem 2. ovoga natjecaja",
+            # The contract, not the post.
+            "za radno mjesto na neodredeno vrijeme uz probni rad",
+            # A whole sentence: an auxiliary verb gives it away.
+            "za radno mjesto objavljene su obavijesti o testiranju",
+            # A blank left to be filled in by hand.
+            "za radno mjesto _____________",
+        ],
+    )
+    def test_legal_boilerplate_is_not_offered_as_a_post(self, prose: str) -> None:
+        """Empty is the honest answer: the caller then shows the institution.
+
+        A title of "kandidati moraju priloziti sljedece dokumente" is worse than
+        no title at all, because it looks like one.
+        """
+        assert _mine_job_title(prose) == ""
+
+    def test_the_announcement_wins_over_the_apparatus(self) -> None:
+        """Both are anchored; the one that comes first in the text is the post.
+
+        The old code took the first anchor in its own list and that anchor's
+        first hit, so a title once came from the envelope instruction nine
+        thousand characters into the notice.
+        """
+        prose = (
+            "Upravno vijece raspisuje natjecaj za radno mjesto odgojitelj. "
+            + "x" * 4000
+            + " Prijave se podnose u zatvorenoj omotnici s naznakom: za radno "
+            "mjesto strucni suradnik – ne otvaraj"  # noqa: RUF001
+        )
+        assert _mine_job_title(prose) == "odgojitelj"

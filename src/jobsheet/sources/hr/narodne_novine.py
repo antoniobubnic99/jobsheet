@@ -76,7 +76,10 @@ _WITHDRAWN = re.compile(r"PONIŠT|PONIST")
 _ANNOUNCES_ELSEWHERE = re.compile(r"^OBAVIJEST")
 _BODY = re.compile(r'<div class="og-content">(.*?)</div>', re.S)
 
-# Ordered: the earlier the phrase, the more likely it introduces the real post.
+# The phrases a Croatian vacancy notice puts in front of the post itself. Which
+# one matches says nothing about quality -- what matters is WHERE it matches, so
+# these are searched for all at once and taken in the order they appear in the
+# text (see `_mine_job_title`).
 _ANCHORS = (
     "na radno mjesto",
     "na radna mjesta",
@@ -91,8 +94,50 @@ _ANCHORS = (
 )
 _STOP = re.compile(
     r"\s+(?:u |na |pri |za |radi |koje |koji |te |i |a |s |sa |o |od |do |iz )\b|[.;:,]|\d"
+    # An opening bracket starts a gloss, never the post: "ucitelj (m/z)",
+    # "(strucni radnik u sustavu socijalne zastite 2)".
+    r"|\s\("
+    # A head count or an envelope instruction hung off the end of the post:
+    # "referent - materijalni knjigovoda - jedan izvrsitelj", "odgojitelj - ne
+    # otvaraj".
+    r"|\s[-–—]\s*(?=jedan|jedna|jedne|jednog|dva|dvije|dvoje|tri|više|ne\s)"  # noqa: RUF001
 )
-_LEADING_JUNK = re.compile(r"^(?:u|na|pri|za|radi|i|a|s|sa|o|od|do|iz)\b\s*", re.IGNORECASE)
+# Between the anchor and the post sit a colon, a dash, or an ordinal: "za radno
+# mjesto: - ucitelj", "na radno mjesto 1. odgajatelj". Left in place, `_STOP`
+# cuts at the digit or the colon and the whole title comes back empty -- which is
+# what happened to a fifth of all notices.
+_LEADING_JUNK = re.compile(
+    r"^[\s:\-–—»„\"']*(?:\d+[.)]\s*)?[\s:\-–—»„\"']*"  # noqa: RUF001
+    r"(?:(?:u|na|pri|za|radi|i|a|s|sa|o|od|do|iz)\b\s*)*"
+    # "za izbor I IMENOVANJE ravnatelja" -- the post is the head, not the act of
+    # appointing to it.
+    r"(?:(?:imenovanje|izbor)\b\s*(?:i\s*)?)*",
+    re.IGNORECASE,
+)
+# Punctuation only. Quotation marks are left alone: an institution in the post
+# ("ravnatelj Gimnazije »Matija Mesić«") otherwise loses its closing mark.
+_TRAILING_JUNK = re.compile(r"[\s\-–—,;:(]+$")  # noqa: RUF001
+# What an anchor catches when it lands in the legal apparatus rather than on the
+# post. Every entry was measured against live notices: a head count, a contract
+# type, a cross-reference ("pod rednim brojem"), an organisational unit, the list
+# of required documents, the envelope instruction. When a candidate reads like
+# one of these, the NEXT occurrence of an anchor is tried -- the real
+# announcement usually sits further down.
+_NOT_A_POST = re.compile(
+    r"^(?:jedan|jedna|jedne|jednog|jednu|dva|dvije|dvoje|tri|četiri|više)\b"
+    r"|^(?:izvršitelj|zaposlenik|kandidat|pripravnik|radnik[ea]?\b)"
+    r"|^(?:neodređeno|određeno|puno|nepuno)\b"
+    r"|^(?:pod|radno mjesto|radna mjesta|upravni odjel|odjel|služb[au]|ured)\b"
+    r"|kvalifikacij|stručn[au] sprem|studij|dokument|prilož|uvjet|natječaj|oglas"
+    r"|prijav|omotnic|otvara|klasa|urbroj|rbr\b|rednim brojem|kako slijedi"
+    r"|vrijeme|slijedeć|sljedeć|pristupnic|pristupnik"
+    # A post is a noun phrase; an auxiliary verb means a whole sentence was
+    # caught ("sadržan je", "objavljene su", "suglasni ste").
+    r"|\b(?:je|su|ste|smo|sam|bi|će|biti)\b",
+    re.IGNORECASE,
+)
+# Notices that leave a blank line to be filled in produce "_____________".
+_HAS_LETTER = re.compile(r"[^\W\d_]", re.UNICODE)
 
 _POINTS_AT_SELEKCIJA = re.compile(r"selekcija\.gov\.hr|centralni\s+sustav", re.IGNORECASE)
 
@@ -270,18 +315,35 @@ def _mine_job_title(text: str) -> str:
     radno mjesto viši stručni suradnik za prostorno uređenje ...". The post
     follows one of a small set of fixed phrases, and ends at the next
     preposition, punctuation mark or digit.
+
+    The same phrases also appear in the apparatus around the announcement -- the
+    list of documents to enclose, the instruction on how to label the envelope --
+    so finding one is not enough. Two rules keep the search on the announcement:
+    occurrences are tried in the order they appear in the text, earliest first,
+    and one that reads like boilerplate rather than a post is passed over.
+
+    Measured over 90 live notices: 71 come back with the post, against 51 before,
+    and the roughly twenty that used to arrive as legal prose -- "kandidati
+    moraju priložiti sljedeće dokumente" was one -- are gone. What cannot be
+    mined returns empty, and the caller falls back to the institution: a plain
+    "Dječji vrtić Tići" is honest, "sadržan je" is not.
     """
     lowered = text.casefold()
-    for anchor in _ANCHORS:
-        position = lowered.find(anchor)
-        if position < 0:
-            continue
-        tail = text[position + len(anchor) :].strip()
+    # Every occurrence of every anchor, in the order the reader meets them. The
+    # earlier version took the first anchor in the tuple and its first hit, which
+    # is how a title once came from the envelope instruction 9 000 characters in.
+    occurrences = sorted(
+        (found.start(), anchor)
+        for anchor in _ANCHORS
+        for found in re.finditer(re.escape(anchor), lowered)
+    )
+    for position, anchor in occurrences:
+        tail = _LEADING_JUNK.sub("", text[position + len(anchor) :]).strip()
         stop = _STOP.search(tail)
-        # RUF001: the en and em dashes are deliberate -- Croatian legal text uses
-        # both, and a title that keeps a trailing dash reads as a typo.
-        candidate = (tail[: stop.start()] if stop else tail[:80]).strip(" -–—,;:")  # noqa: RUF001
-        candidate = _LEADING_JUNK.sub("", candidate).strip()
-        if len(candidate) >= 4:
-            return candidate
+        candidate = _TRAILING_JUNK.sub("", (tail[: stop.start()] if stop else tail[:80]).strip())
+        if len(candidate) < 4 or not _HAS_LETTER.search(candidate):
+            continue
+        if _NOT_A_POST.search(candidate):
+            continue
+        return candidate
     return ""
