@@ -34,6 +34,7 @@ import {
 import { screenNumber } from '@/lib/screens';
 import { useSearchRun } from '@/lib/useSearchRun';
 import { formatWhen } from '@/lib/format';
+import { deriveCountyFeeds, deriveSourceParams } from '@/lib/sourceDefaults';
 import {
   ChipInput,
   Empty,
@@ -45,6 +46,7 @@ import {
   Section,
 } from '@/components/primitives';
 import RunProgress from '@/components/RunProgress';
+import SourceBulkActions from '@/components/SourceBulkActions';
 import SourceCard from '@/components/SourceCard';
 import KeywordGroups from '@/components/KeywordGroups';
 
@@ -55,6 +57,15 @@ export default function SearchScreen() {
 
   const sources = useQuery({ queryKey: ['sources'], queryFn: api.sources });
   const saved = useQuery({ queryKey: ['profiles', 'search'], queryFn: () => api.profiles('search') });
+
+  // The employment-service feeds implied by the counties named in "Gdje" --
+  // the same mapping the wizard uses, so a source ticked here starts from the
+  // same answer instead of asking the user to name their county twice.
+  const counties = useQuery({
+    queryKey: ['places', 'county'],
+    queryFn: () => api.places('', 'county'),
+    staleTime: Infinity,
+  });
 
   // The wizard's answers. A 404 is the ordinary state for an account that
   // predates the wizard, so it is an absence rather than an error.
@@ -108,6 +119,11 @@ export default function SearchScreen() {
     return { global, byCountry };
   }, [sources.data]);
 
+  const countyFeeds = useMemo(
+    () => deriveCountyFeeds(profile.regions, counties.data?.counties ?? []),
+    [counties.data, profile.regions],
+  );
+
   const toggle = (id: string, defaults: Record<string, unknown>) =>
     setChosen((current) => {
       if (id in current) {
@@ -116,6 +132,17 @@ export default function SearchScreen() {
       }
       return { ...current, [id]: defaults };
     });
+
+  /** Tick exactly this set, keeping the parameters of anything already ticked. */
+  const choose = (wanted: SourceManifest[]) =>
+    setChosen((current) =>
+      Object.fromEntries(
+        wanted.map((source) => [
+          source.id,
+          current[source.id] ?? deriveSourceParams(source, profile, countyFeeds),
+        ]),
+      ),
+    );
 
   const running = run.state === 'running';
 
@@ -158,19 +185,19 @@ export default function SearchScreen() {
         />
       ) : null}
 
-      <Section
-        label={t('search.sources')}
-        aside={
-          chosenIds.length ? (
-            <span className="eyebrow">{t('search.chosen', { count: chosenIds.length })}</span>
-          ) : null
-        }
-      >
+      <Section label={t('search.sources')}>
         {sources.isLoading ? <Loading /> : null}
         {sources.error ? <Problem message={String(sources.error)} onRetry={() => void sources.refetch()} /> : null}
 
         {sources.data ? (
           <>
+            <SourceBulkActions
+              sources={sources.data.sources}
+              countries={[...grouped.byCountry.keys()]}
+              chosenCount={chosenIds.length}
+              onChoose={choose}
+            />
+
             <h3 className="eyebrow mb-[var(--gap-tight)] mt-[var(--gap-tight)]">
               {t('search.global')}
             </h3>
@@ -181,7 +208,7 @@ export default function SearchScreen() {
                   source={source}
                   chosen={source.id in chosen}
                   params={chosen[source.id] ?? {}}
-                  onToggle={toggle}
+                  onToggle={(id) => toggle(id, deriveSourceParams(source, profile, countyFeeds))}
                   onParams={(id, params) =>
                     setChosen((current) => ({ ...current, [id]: params }))
                   }
@@ -202,7 +229,9 @@ export default function SearchScreen() {
                       source={source}
                       chosen={source.id in chosen}
                       params={chosen[source.id] ?? {}}
-                      onToggle={toggle}
+                      onToggle={(id) =>
+                        toggle(id, deriveSourceParams(source, profile, countyFeeds))
+                      }
                       onParams={(id, params) =>
                         setChosen((current) => ({ ...current, [id]: params }))
                       }

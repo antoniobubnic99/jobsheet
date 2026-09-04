@@ -27,6 +27,7 @@ import { useTranslation } from 'react-i18next';
 
 import { api } from '@/lib/api';
 import type { SearchProfile, SearchSetup, SourceManifest } from '@/lib/types';
+import { deriveSourceParams } from '@/lib/sourceDefaults';
 import {
   ChipInput,
   Empty,
@@ -39,6 +40,7 @@ import {
 import Combobox from '@/components/Combobox';
 import FolderPicker from '@/components/FolderPicker';
 import KeywordGroups from '@/components/KeywordGroups';
+import SourceBulkActions from '@/components/SourceBulkActions';
 import SourceCard from '@/components/SourceCard';
 
 export interface StepProps {
@@ -377,26 +379,6 @@ export function StepSources({
   const { t } = useTranslation();
   const chosen = Object.fromEntries(setup.sources.map((one) => [one.source_id, one.params]));
 
-  /**
-   * The parameters a source starts with when it is ticked.
-   *
-   * This is the trap the bulk buttons had to be built around: HZZ declares
-   * `counties` as required, so a source ticked without its defaults makes the
-   * search fail on a missing parameter. Every path that ticks a source -- one
-   * card, or all of them at once -- goes through here.
-   */
-  const defaultsFor = (source: SourceManifest): Record<string, unknown> => {
-    const params = Object.fromEntries(
-      source.params.filter((spec) => spec.default != null).map((spec) => [spec.name, spec.default]),
-    );
-    // The counties from step 3, if the user named any: they already said where
-    // they want to work, and making them say it again would be rude.
-    if (source.id === 'hzz' && countyFeeds.length) {
-      params.counties = countyFeeds.map(String);
-    }
-    return params;
-  };
-
   const toggle = (id: string, defaults: Record<string, unknown>) =>
     onChange({
       sources:
@@ -415,7 +397,7 @@ export function StepSources({
     onChange({
       sources: wanted.map((source) => ({
         source_id: source.id,
-        params: chosen[source.id] ?? defaultsFor(source),
+        params: chosen[source.id] ?? deriveSourceParams(source, setup.profile, countyFeeds),
       })),
     });
 
@@ -440,7 +422,7 @@ export function StepSources({
       source={source}
       chosen={source.id in chosen}
       params={chosen[source.id] ?? {}}
-      onToggle={(id) => toggle(id, defaultsFor(source))}
+      onToggle={(id) => toggle(id, deriveSourceParams(source, setup.profile, countyFeeds))}
       onParams={setParams}
       locale={locale}
     />
@@ -450,29 +432,12 @@ export function StepSources({
     <div className="grid gap-[var(--gap-wide)]">
       {/* Fourteen sources in one flat grid is a wall. Three buttons and a
           heading per country turn it into a choice somebody can make. */}
-      <div className="flex flex-wrap items-center gap-[var(--gap-tight)]">
-        <button type="button" className="btn btn-quiet" onClick={() => choose(sources)}>
-          {t('welcome.sources.all')}
-        </button>
-        {countries.map((country) => (
-          <button
-            key={country}
-            type="button"
-            className="btn btn-quiet"
-            onClick={() =>
-              choose(sources.filter((source) => source.country === country))
-            }
-          >
-            {t('welcome.sources.onlyCountry', { country })}
-          </button>
-        ))}
-        <button type="button" className="btn btn-quiet" onClick={() => choose([])}>
-          {t('welcome.sources.none')}
-        </button>
-        <span className="eyebrow ml-auto">
-          {t('search.chosen', { count: setup.sources.length })}
-        </span>
-      </div>
+      <SourceBulkActions
+        sources={sources}
+        countries={countries}
+        chosenCount={setup.sources.length}
+        onChoose={choose}
+      />
 
       {grouped.global.length ? (
         <div>

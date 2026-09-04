@@ -39,6 +39,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { useAccount } from '@/lib/account';
 import { EMPTY_SETUP, type Account, type SearchProfile, type SearchSetup } from '@/lib/types';
+import { deriveCountyFeeds } from '@/lib/sourceDefaults';
 import LanguagePicker from '@/components/LanguagePicker';
 import {
   StepEmployers,
@@ -69,21 +70,6 @@ const STEPS = [
  * one's half-typed answers.
  */
 const draftKey = (id: number | undefined) => `jobsheet.wizard.draft.${id ?? 'new'}`;
-
-/**
- * The same comparison `jobsheet.core.matching.fold` makes on the server.
- *
- * Only ever used to line a county the user typed up against the list, never to
- * decide anything: a name that does not match simply pre-selects nothing.
- */
-const fold = (text: string) =>
-  text
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[đĐ]/g, 'd')
-    .toLowerCase()
-    .replace(/zupanija/, '')
-    .trim();
 
 interface Draft {
   step: number;
@@ -201,14 +187,10 @@ export default function WelcomeScreen() {
     staleTime: Infinity,
   });
 
-  const countyFeeds = useMemo(() => {
-    const byName = new Map(
-      (counties.data?.counties ?? []).map((one) => [fold(one.name), one.feed]),
-    );
-    return setup.profile.regions
-      .map((region) => byName.get(fold(region)))
-      .filter((feed): feed is number => typeof feed === 'number');
-  }, [counties.data, setup.profile.regions]);
+  const countyFeeds = useMemo(
+    () => deriveCountyFeeds(setup.profile.regions, counties.data?.counties ?? []),
+    [counties.data, setup.profile.regions],
+  );
 
   const failure = finish.error;
   const problem = useMemo(() => {

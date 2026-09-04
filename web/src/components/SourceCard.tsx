@@ -16,12 +16,19 @@ function ParamField({
   spec,
   value,
   onChange,
+  fieldId,
 }: {
   spec: ParamSpec;
   value: unknown;
   onChange: (next: unknown) => void;
+  /** Namespaced by source id: two sources sharing a param name (both have
+      a `days`, say) would otherwise render two fields with the same DOM id
+      once both are ticked -- which breaks the label's association with
+      whichever one comes second, silently, since duplicate ids are valid
+      HTML and nothing here would ever throw about it. */
+  fieldId: string;
 }) {
-  const id = `param-${spec.name}`;
+  const id = fieldId;
 
   if (spec.kind === 'boolean') {
     return (
@@ -171,6 +178,7 @@ export default function SourceCard({
               spec={spec}
               value={params[spec.name]}
               onChange={(next) => onParams(source.id, { ...params, [spec.name]: next })}
+              fieldId={`param-${source.id}-${spec.name}`}
             />
           ))}
         </div>
