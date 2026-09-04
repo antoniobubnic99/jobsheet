@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The portable Windows build now comes with the release.** Every release from
+  this one on carries `JobSheet-<version>-windows.zip` on its Releases page, for
+  the person who has neither Python nor Node and no intention of acquiring
+  either: unpack, double-click, nothing installed. It is built on a Windows
+  runner rather than zipped up from Linux, because the last step of building it
+  is starting the packaged server with the *embedded* interpreter and asking it
+  for a page — the only interpreter whose opinion counts is the one that will
+  run on the user's machine. A ZIP that cannot serve a page now fails the
+  release instead of reaching the page.
 - The read-only summary on the front page now names the employers as well: the
   ones you are hoping for and the ones you are skipping. The wizard had asked
   for both since 0.1.0 while the summary showed neither, so there was no way to

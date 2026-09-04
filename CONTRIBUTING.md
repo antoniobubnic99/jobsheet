@@ -159,6 +159,16 @@ Before opening a pull request:
 Nightly runs the live sources. Releases are tag-driven and publish to PyPI
 through trusted publishing — there is no token anywhere.
 
+`release.yml` also builds the portable Windows ZIP on a Windows runner and
+attaches it to the Release. That job is *not* gated on the tag, so it can be
+proved before one exists:
+
+```bash
+gh workflow run release.yml --ref main -f dry_run=true
+```
+
+A dry run builds everything and publishes nothing.
+
 ---
 
 ## Reporting a bug

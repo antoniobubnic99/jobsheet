@@ -8,6 +8,10 @@ name: Release
 # Python package, so `npm run build` must finish before `python -m build`
 # starts. Get it backwards and the wheel is missing its interface -- and
 # nothing in the build fails to say so.
+#
+# The Release carries three things: the wheel, the sdist, and the portable
+# Windows ZIP built by `windows_zip` on a Windows runner -- which is the only
+# machine that can prove the embedded interpreter in it actually runs.
 
 on:
   push:
@@ -91,6 +95,70 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  windows_zip:
+    name: Build the Windows ZIP
+    # Deliberately not gated on the tag: this job must be exercisable by a dry
+    # run. The `action-gh-release` v2-on-Node-20 deprecation went unseen for
+    # three releases precisely because the only job that could have shown it
+    # ran nowhere but on a tag, where there is no longer anywhere to retreat to.
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # 3.11 is not incidental. The ZIP embeds the 3.11 build from python.org,
+      # and the dependencies pip puts next to it include compiled wheels
+      # (pydantic-core) resolved for whichever interpreter runs the script. A
+      # mismatch produces a package that fails on the user's machine rather
+      # than here, which is why the script refuses to run under anything else.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install the wheel builder
+        run: python -m pip install build
+
+      # The same order as everywhere else: the interface first, the package
+      # around it second. Done here rather than inside the script so that npm
+      # runs under the shell npm expects, and so a failure says "npm" in the
+      # log rather than surfacing as a PowerShell exception four steps later.
+      # `-SkipFrontend` still checks the interface is there before it trusts it.
+      - name: Build the interface
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      # Invoked exactly the way the README tells a person to invoke it, under
+      # the Windows PowerShell 5.1 that ships with Windows rather than pwsh.
+      #
+      # The script earns its place here over a zip step: its last stage starts
+      # the packaged server with the *embedded* interpreter and asks it for a
+      # page. A ZIP that cannot serve one fails the release rather than
+      # reaching the Releases page.
+      - name: Build it
+        run: powershell -ExecutionPolicy Bypass -File scripts\build-windows-zip.ps1 -SkipFrontend
+
+      # The script names the file after the product, not the version, because
+      # that is what someone building one copy by hand wants. On a Releases
+      # page, sitting under every previous version, the name has to say which.
+      - name: Name it after the version
+        shell: pwsh
+        run: Rename-Item build\JobSheet-windows.zip JobSheet-${{ needs.build.outputs.version }}-windows.zip
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-zip
+          path: build/JobSheet-*-windows.zip
+          if-no-files-found: error
+
   pypi:
     name: Publish to PyPI
     needs: build
@@ -113,7 +181,11 @@ jobs:
 
   github_release:
     name: Cut the GitHub Release
-    needs: [build, pypi]
+    # `windows_zip` is in here so the Release carries the portable build. If it
+    # is the only thing that fails, PyPI has already published and the version
+    # is spent -- fix it and use "Re-run failed jobs" on the same run rather
+    # than reaching for a new tag.
+    needs: [build, pypi, windows_zip]
     if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run
     runs-on: ubuntu-latest
     permissions:
@@ -124,8 +196,15 @@ jobs:
           name: distributions
           path: dist
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows-zip
+          path: windows
+
       - uses: softprops/action-gh-release@v3
         with:
-          files: dist/*
+          files: |
+            dist/*
+            windows/*.zip
           generate_release_notes: true
           draft: false

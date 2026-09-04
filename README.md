@@ -49,16 +49,20 @@ jobsheet                    # opens http://127.0.0.1:8765
 ```
 
 **Windows, no Python:** there is a portable build for handing to someone who has
-neither Python nor Node.
+neither Python nor Node. From 0.1.1 onward it is attached to every release —
+`JobSheet-<version>-windows.zip` on the
+[Releases page](https://github.com/antoniobubnic99/jobsheet/releases).
+
+They unpack it anywhere and double-click **Start JobSheet**. It carries its own
+Python interpreter; nothing is installed, nothing is registered, nothing phones
+home.
+
+To build one yourself, from a 3.11 environment with the dev extra installed:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\build-windows-zip.ps1
 # -> build\JobSheet-windows.zip
 ```
-
-They unpack it anywhere and double-click **Start JobSheet**. It carries its own
-Python interpreter; nothing is installed, nothing is registered, nothing phones
-home.
 
 **macOS and Linux:** `scripts/make-launcher.sh` puts a double-clickable
 `.command` on your Desktop, or a menu entry in `~/.local/share/applications`.
