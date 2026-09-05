@@ -11,12 +11,14 @@ import { useTranslation } from 'react-i18next';
 
 import type { ParamSpec, SourceManifest } from '@/lib/types';
 import { formatWhen } from '@/lib/format';
+import { normalizeAtsSlug } from '@/lib/sourceDefaults';
 
 function ParamField({
   spec,
   value,
   onChange,
   fieldId,
+  sourceId,
 }: {
   spec: ParamSpec;
   value: unknown;
@@ -27,6 +29,9 @@ function ParamField({
       whichever one comes second, silently, since duplicate ids are valid
       HTML and nothing here would ever throw about it. */
   fieldId: string;
+  /** Which source this field belongs to, so a bare board/account/company
+      slug can forgive a pasted full address on the four ATS sources. */
+  sourceId: string;
 }) {
   const id = fieldId;
 
@@ -86,6 +91,11 @@ function ParamField({
           value={(value as string | number | undefined) ?? ''}
           onChange={(event) =>
             onChange(spec.kind === 'number' ? Number(event.target.value) : event.target.value)
+          }
+          onBlur={
+            spec.kind === 'text'
+              ? (event) => onChange(normalizeAtsSlug(sourceId, spec.name, event.target.value))
+              : undefined
           }
         />
       )}
@@ -166,6 +176,15 @@ export default function SourceCard({
               : health.last_error && !health.last_ok
                 ? t('search.healthBad', { when: formatWhen(health.last_error, locale) })
                 : t('search.healthOk', { when: formatWhen(health.last_ok, locale) })}
+            {/* The timestamp alone says a source is unwell, not why -- the
+                board slug is wrong, the site is down, the token expired. The
+                reason lives here rather than only in Settings, because this
+                is where somebody is actually looking when it matters. */}
+            {health?.message ? (
+              <span className="mt-[var(--gap-hair)] block text-[var(--ink-faint)]">
+                {health.message}
+              </span>
+            ) : null}
           </span>
         </span>
       </label>
@@ -179,6 +198,7 @@ export default function SourceCard({
               value={params[spec.name]}
               onChange={(next) => onParams(source.id, { ...params, [spec.name]: next })}
               fieldId={`param-${source.id}-${spec.name}`}
+              sourceId={source.id}
             />
           ))}
         </div>

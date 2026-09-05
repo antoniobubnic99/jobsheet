@@ -70,6 +70,7 @@
     "running": "Searching…",
     "stop": "Stop",
     "noSources": "Choose at least one source first.",
+    "sourcesIncomplete": "Missing a value for: {{names}}. Open that source's card and fill it in before running.",
     "savedSearches": "Saved searches",
     "saveAs": "Save this search",
     "namePlaceholder": "Name it",
@@ -480,6 +481,7 @@
     "summary": "What this search looks for",
     "edit": "Edit search",
     "contracts": "Contract types",
-    "nothingSetUp": "This account has no saved search yet."
+    "nothingSetUp": "This account has no saved search yet.",
+    "sourceNeedsSetup": "One of the sources you picked is still missing a value it needs."
   }
 }

@@ -27,6 +27,9 @@ export interface SearchRun {
   progress: SourceProgress[];
   found: number;
   error: string;
+  /** Why a given source failed, keyed by source id -- the reason `SourceBar`
+      shows next to a red bar instead of leaving it unexplained. */
+  errors: Record<string, string>;
   start: (sources: SourceChoice[], profile: SearchProfile) => void;
   cancel: () => void;
 }
@@ -41,6 +44,7 @@ export function useSearchRun(): SearchRun {
   const [progress, setProgress] = useState<SourceProgress[]>([]);
   const [found, setFound] = useState(0);
   const [error, setError] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   // The id the effect below is allowed to act on. Without it, a second search
   // started while the first is still closing down can have its results
@@ -53,6 +57,7 @@ export function useSearchRun(): SearchRun {
       setProgress([]);
       setFound(0);
       setError('');
+      setErrors({});
       setRecordedId('');
       setState('running');
       api
@@ -97,6 +102,7 @@ export function useSearchRun(): SearchRun {
             setFound(summary.new);
             setRecordedId(summary.run_id);
             if (summary.error) setError(summary.error);
+            setErrors(summary.errors ?? {});
           })
           .catch(() => undefined);
 
@@ -116,5 +122,5 @@ export function useSearchRun(): SearchRun {
     );
   }, [runId, state, queryClient]);
 
-  return { state, runId, recordedId, lines, progress, found, error, start, cancel };
+  return { state, runId, recordedId, lines, progress, found, error, errors, start, cancel };
 }

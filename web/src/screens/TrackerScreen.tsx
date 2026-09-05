@@ -19,9 +19,9 @@
  *
  * * **Dragging** is what people reach for, and restricting it to a small handle
  *   made the obvious gesture fail on the first try.
- * * **The arrows** exist because the board is a horizontally scrolling row, and
- *   dragging a card between columns on a phone means dragging it past the edge
- *   of the screen and hoping the board scrolls under it. It does not.
+ * * **The arrows** exist because the board is a wrapping grid, not a scrolling
+ *   row: on a narrow screen the columns sit close together and a drag can
+ *   easily land one column off from where it was meant to.
  * * **The select** is the only one of the three a keyboard can operate, so it
  *   stays whatever else changes.
  *
@@ -48,54 +48,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
 import { BOARD_ORDER, type ApplicationStatus, type JobRow } from '@/lib/types';
-import { formatDate, formatWhen } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 import { screenNumber } from '@/lib/screens';
-import {
-  Dialog,
-  Empty,
-  Loading,
-  Problem,
-  ScreenHeader,
-  StatusPill,
-} from '@/components/primitives';
+import { Empty, Loading, Problem, ScreenHeader, StatusPill } from '@/components/primitives';
+import JobDetailDialog, { StatusSelect } from '@/components/JobDetailDialog';
 import LetterDialog from '@/components/LetterDialog';
 
 const KNOWN_STATUSES = new Set<string>(BOARD_ORDER);
-
-/** Keep a pointer gesture from reaching the card underneath it. */
-const KEEP_TO_ITSELF = {
-  onPointerDown: (event: React.PointerEvent) => event.stopPropagation(),
-  onClick: (event: React.MouseEvent) => event.stopPropagation(),
-};
-
-function StatusSelect({
-  row,
-  order,
-  onMove,
-  className = '',
-}: {
-  row: JobRow;
-  order: ApplicationStatus[];
-  onMove: (next: ApplicationStatus) => void;
-  className?: string;
-}) {
-  const { t } = useTranslation();
-  return (
-    <select
-      className={`field w-auto ${className}`}
-      aria-label={`${t('results.status')} — ${row.posting.title}`}
-      value={row.status}
-      {...KEEP_TO_ITSELF}
-      onChange={(event) => onMove(event.target.value as ApplicationStatus)}
-    >
-      {order.map((value) => (
-        <option key={value} value={value}>
-          {t(`status.${value}`)}
-        </option>
-      ))}
-    </select>
-  );
-}
 
 function Card({
   row,
@@ -201,7 +160,7 @@ function Column({
   return (
     <section
       ref={setNodeRef}
-      className="flex min-w-[12.5rem] flex-1 flex-col rounded-[var(--radius)] transition-colors"
+      className="flex flex-col rounded-[var(--radius)] transition-colors"
       style={{
         background: isOver ? `var(--status-${status}-soft)` : 'var(--ground-sunk)',
         outline: isOver ? `1px dashed var(--status-${status})` : '1px solid var(--rule)',
@@ -242,11 +201,6 @@ export default function TrackerScreen() {
   const [letterFor, setLetterFor] = useState<JobRow | null>(null);
 
   const board = useQuery({ queryKey: ['board'], queryFn: api.board });
-  const history = useQuery({
-    queryKey: ['history', openKey],
-    queryFn: () => api.history(openKey!),
-    enabled: Boolean(openKey),
-  });
 
   const move = useMutation({
     mutationFn: ({ key, next }: { key: string; next: ApplicationStatus }) => api.move(key, next),
@@ -306,9 +260,14 @@ export default function TrackerScreen() {
         </div>
       ) : (
         <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragEnd={onDragEnd}>
-          {/* Plain `overflow-x`, not `.scroll-x`: paint containment would clip a
-              card the moment it was dragged past the edge of the board. */}
-          <div className="mt-[var(--gap-wide)] flex gap-[var(--gap-tight)] overflow-x-auto pb-[var(--gap)]">
+          {/* A wrapping grid, not a scrolling row: `1fr` tracks cannot sum to
+              more than the container, so all six columns fit at once on a
+              real desktop width with no scrollbar to fight. Narrower than
+              that, columns wrap into more rows instead of running off the
+              edge of the screen -- which is also why the arrows above a
+              column still earn their keep on a phone: columns sit close
+              together there, and a drag can land in the wrong one. */}
+          <div className="mt-[var(--gap-wide)] grid grid-cols-2 gap-[var(--gap-tight)] pb-[var(--gap)] sm:grid-cols-3 xl:grid-cols-6">
             {order.map((status, index) => {
               const rows = columns?.[status] ?? [];
               return (
@@ -341,92 +300,21 @@ export default function TrackerScreen() {
       )}
 
       {open ? (
-        <Dialog title={open.posting.title} onClose={() => setOpenKey(null)}>
-          <p className="text-[var(--text-small)] text-[var(--ink-soft)]">
-            {open.posting.company}
-            {open.posting.location ? ` · ${open.posting.location}` : ''}
-          </p>
-
-          {/* Everything you would otherwise have closed the dialog to do. It
-              held the ad link and a note and nothing else, which left the one
-              screen that is about deciding unable to act on a decision. */}
-          <div className="mt-[var(--gap)] flex flex-wrap items-center gap-[var(--gap-tight)]">
-            <StatusPill status={open.status} />
-            <StatusSelect
-              row={open}
-              order={order}
-              onMove={(next) => move.mutate({ key: open.dedup_key, next })}
-              className="text-[var(--text-small)]"
-            />
-          </div>
-
-          <div className="mt-[var(--gap)] flex flex-wrap items-center gap-[var(--gap-tight)]">
-            <a
-              href={open.posting.url}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="btn btn-quiet"
-            >
-              {t('results.openAd')} ↗
-            </a>
-            <button
-              type="button"
-              className="btn btn-quiet"
-              onClick={() => {
-                setLetterFor(open);
-                setOpenKey(null);
-              }}
-            >
-              {t('results.letter')}
-            </button>
-            {open.status === 'skipped' ? null : (
-              <button
-                type="button"
-                className="btn btn-bare text-[var(--ink-faint)] hover:text-[var(--bad)]"
-                onClick={() => move.mutate({ key: open.dedup_key, next: 'skipped' })}
-              >
-                {t('tracker.discard')}
-              </button>
-            )}
-          </div>
-
-          {open.note ? (
-            <p className="panel-sunk mt-[var(--gap)] px-[var(--gap)] py-[var(--gap-tight)] text-[var(--text-small)]">
-              {open.note}
-            </p>
-          ) : null}
-
-          <h3 className="eyebrow mt-[var(--gap-wide)]">{t('tracker.history')}</h3>
-          {history.data?.length ? (
-            <ol className="mt-[var(--gap-tight)] grid gap-[var(--gap-hair)]">
-              {history.data.map((step, index) => (
-                <li
-                  key={index}
-                  className="rule-b flex items-baseline justify-between gap-[var(--gap)] py-[var(--gap-hair)] last:border-b-0"
-                >
-                  <span className="text-[var(--text-small)]">
-                    {t('tracker.moved', {
-                      from: t(`status.${step.from_status}`),
-                      to: t(`status.${step.to_status}`),
-                    })}
-                    {step.note ? (
-                      <span className="block text-[var(--text-micro)] text-[var(--ink-faint)]">
-                        {step.note}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="mono whitespace-nowrap text-[var(--text-micro)] text-[var(--ink-faint)]">
-                    {formatWhen(step.at, i18n.language)}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p className="mt-[var(--gap-tight)] text-[var(--text-small)] text-[var(--ink-faint)]">
-              {t('tracker.noHistory')}
-            </p>
-          )}
-        </Dialog>
+        <JobDetailDialog
+          row={open}
+          order={order}
+          onClose={() => setOpenKey(null)}
+          onMove={(next) => move.mutate({ key: open.dedup_key, next })}
+          onDiscard={
+            open.status === 'skipped'
+              ? undefined
+              : () => move.mutate({ key: open.dedup_key, next: 'skipped' })
+          }
+          onWriteLetter={() => {
+            setLetterFor(open);
+            setOpenKey(null);
+          }}
+        />
       ) : null}
 
       {letterFor ? <LetterDialog row={letterFor} onClose={() => setLetterFor(null)} /> : null}

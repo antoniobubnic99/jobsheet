@@ -170,14 +170,18 @@ describe('the rail', () => {
     vi.restoreAllMocks();
   });
 
-  it('numbers the tracker 03 and the settings 04, the same as their headings', async () => {
+  it('numbers the tracker 03, the same as its heading, and gives settings no rail slot', async () => {
     /** The rail and each screen's own heading print the same number now, so a
-        hidden screen cannot leave the two disagreeing. */
+        hidden screen cannot leave the two disagreeing. Settings moved into the
+        account menu, so it takes no number here at all. */
     mount();
     await screen.findByText('ana');
 
     expect(screen.getByText('03').closest('a')).toHaveAttribute('href', '/tracker');
-    expect(screen.getByText('04').closest('a')).toHaveAttribute('href', '/settings');
+    expect(screen.queryByText('04')).not.toBeInTheDocument();
+    // The menu is closed at this point, so the only "Settings" this could
+    // match is a rail link -- there must not be one.
+    expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument();
   });
 
   it('keeps the language switch reachable at every width', async () => {

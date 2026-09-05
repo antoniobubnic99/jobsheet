@@ -19,7 +19,8 @@
  * screen was hidden from the rail.
  */
 
-import { NavLink, Outlet } from 'react-router-dom';
+import { useEffect } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import { RAIL_SCREENS } from '@/lib/screens';
@@ -28,6 +29,19 @@ import ProfileMenu from '@/components/ProfileMenu';
 
 export default function Shell() {
   const { t } = useTranslation();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // A fresh load always opens on Home, whatever address was in the bar --
+  // reopening the app is not the same as picking up where you left off.
+  // The empty dependency list is the point: this must fire once, when the
+  // shell first appears, and never again on a re-render the session's own
+  // window-focus refetch causes while the person is mid-task somewhere else
+  // in the rail.
+  useEffect(() => {
+    if (location.pathname !== '/') navigate('/', { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[var(--rail-width)_1fr]">

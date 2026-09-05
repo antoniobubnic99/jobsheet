@@ -9,9 +9,9 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import '@/i18n';
@@ -282,13 +282,13 @@ describe('every screen mounts', () => {
     await waitFor(() => expect(screen.getAllByText('Position').length).toBeGreaterThan(0));
   });
 
-  it('04 Tracker', async () => {
+  it('03 Tracker', async () => {
     render(wrap(<TrackerScreen />));
     expect(await screen.findByRole('heading', { name: 'Tracker', level: 1 })).toBeInTheDocument();
     expect(await screen.findByText('GIS Engineer')).toBeInTheDocument();
   });
 
-  it('05 Settings', async () => {
+  it('Settings', async () => {
     render(wrap(<SettingsScreen />));
     expect(await screen.findByRole('heading', { name: 'Settings', level: 1 })).toBeInTheDocument();
     // The promise the app makes is that everything is in files you can open,
@@ -298,7 +298,7 @@ describe('every screen mounts', () => {
 
   it('the shell links to every screen in the rail', () => {
     render(wrap(<Shell />));
-    for (const name of ['Search', 'Results', 'Tracker', 'Settings']) {
+    for (const name of ['Search', 'Results', 'Tracker']) {
       expect(screen.getByRole('link', { name: new RegExp(name, 'i') })).toBeInTheDocument();
     }
   });
@@ -310,14 +310,45 @@ describe('every screen mounts', () => {
     expect(screen.queryByRole('link', { name: /sheet designer/i })).not.toBeInTheDocument();
   });
 
+  it('settings is reached from the account menu, not the numbered rail', () => {
+    render(wrap(<Shell />));
+    // Settings left the rail for the account menu -- it keeps its route
+    // (queryByRole above would still find it if the menu were open), it just
+    // no longer takes a number from the rail's own nav list.
+    expect(screen.queryByRole('link', { name: /^Settings$/i })).not.toBeInTheDocument();
+  });
+
   it('the rail numbers itself without a gap where a hidden screen was', () => {
     render(wrap(<Shell />));
-    // The whole point of computing the numbers: hiding 03 must not leave the
-    // rail reading 01, 02, 04, 05.
-    for (const number of ['01', '02', '03', '04']) {
+    // The whole point of computing the numbers: hiding settings must not
+    // leave the rail reading 01, 02, 03, 04.
+    for (const number of ['01', '02', '03']) {
       expect(screen.getByText(number)).toBeInTheDocument();
     }
-    expect(screen.queryByText('05')).not.toBeInTheDocument();
+    expect(screen.queryByText('04')).not.toBeInTheDocument();
+  });
+
+  it('a fresh load always opens on Home, whatever address was in the bar', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    render(
+      <QueryClientProvider client={client}>
+        <AccountProvider>
+          <MemoryRouter initialEntries={['/tracker']}>
+            <Routes>
+              <Route path="/" element={<Shell />}>
+                <Route index element={<HomeScreen />} />
+                <Route path="tracker" element={<TrackerScreen />} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </AccountProvider>
+      </QueryClientProvider>,
+    );
+
+    // Reopening the app is not the same as picking up where a browser tab
+    // was left -- it bounces to Home before Tracker ever gets to render.
+    expect(await screen.findByRole('button', { name: 'Run the search' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Tracker', level: 1 })).not.toBeInTheDocument();
   });
 });
 
@@ -491,10 +522,24 @@ describe('the front page and the sifting', () => {
     expect(picker).toHaveTextContent(/34 jobs/);
   });
 
-  it('the letter button says what it is instead of only drawing a pencil', async () => {
+  it('a job title opens the shared detail dialog instead of leaving for the ad', async () => {
     render(wrap(<ResultsScreen />));
-    const letter = await screen.findByRole('button', { name: /Application letter/ });
-    expect(letter).toHaveTextContent('Application letter');
+    // No standalone anchor to the ad any more: the title is a button, and
+    // the real "open ad" link moved inside the dialog it opens.
+    expect(screen.queryByRole('link', { name: 'GIS Engineer' })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'GIS Engineer' }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('the letter button lives in the detail dialog, the same one Tracking uses', async () => {
+    render(wrap(<ResultsScreen />));
+    await userEvent.click(await screen.findByRole('button', { name: 'GIS Engineer' }));
+    const dialog = await screen.findByRole('dialog');
+    // A bare pencil glyph on the row is gone; writing a letter is now an
+    // action inside the same dialog as "Open ad" and the status.
+    expect(within(dialog).getByRole('button', { name: 'Application letter' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('link', { name: /Open the ad/ })).toBeInTheDocument();
+    expect(screen.queryByText('✎')).not.toBeInTheDocument();
   });
 
   it('the search editor is reachable but not in the rail', () => {

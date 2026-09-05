@@ -27,7 +27,7 @@
  * Take a key out of this list to put the screen back in the rail; it is
  * renumbered from here, so there is never a gap where a hidden screen was.
  */
-export const HIDDEN_FROM_RAIL: readonly string[] = ['designer', 'searchEdit'];
+export const HIDDEN_FROM_RAIL: readonly string[] = ['designer', 'searchEdit', 'settings'];
 
 export const ALL_SCREENS = [
   { to: '/', key: 'search', end: true },

@@ -34,9 +34,10 @@ import {
 import { screenNumber } from '@/lib/screens';
 import { useSearchRun } from '@/lib/useSearchRun';
 import { formatWhen } from '@/lib/format';
-import { deriveCountyFeeds, deriveSourceParams } from '@/lib/sourceDefaults';
+import { deriveCountyFeeds, deriveSourceParams, sourceIsReady } from '@/lib/sourceDefaults';
 import {
   ChipInput,
+  Dialog,
   Empty,
   Labelled,
   Loading,
@@ -86,15 +87,33 @@ export default function SearchScreen() {
   const [profile, setProfile] = useState<SearchProfile>(EMPTY_PROFILE);
   const [seeded, setSeeded] = useState(false);
   const [saveName, setSaveName] = useState('');
+  const [showRun, setShowRun] = useState(false);
 
   const run = useSearchRun();
   const chosenIds = Object.keys(chosen);
 
-  const startHere = () =>
+  // A source ticked with an empty required field (a Workable slug left
+  // blank, say) used to run anyway and fail with nothing on screen to say
+  // why. Naming it here, before the request leaves the browser, is cheaper
+  // than making the person guess from a red bar.
+  const byId = new Map((sources.data?.sources ?? []).map((one) => [one.id, one]));
+  const incomplete = chosenIds.filter((id) => {
+    const manifest = byId.get(id);
+    return manifest && !sourceIsReady(manifest, chosen[id] ?? {});
+  });
+
+  const startHere = () => {
     run.start(
       chosenIds.map((id) => ({ source_id: id, params: chosen[id] ?? {} })),
       profile,
     );
+    setShowRun(true);
+  };
+
+  // A run that finished while the popup was closed must not be
+  // indistinguishable from having never run at all -- the button has to lead
+  // back to it, not quietly forget it happened and offer to start a new one.
+  const finishedUnseen = !showRun && run.state !== 'idle' && run.state !== 'running';
 
   useEffect(() => {
     const payload = setup.data?.payload;
@@ -156,10 +175,16 @@ export default function SearchScreen() {
           <button
             type="button"
             className="btn btn-primary"
-            disabled={running || chosenIds.length === 0}
-            onClick={startHere}
+            disabled={
+              !running && !finishedUnseen && (chosenIds.length === 0 || incomplete.length > 0)
+            }
+            onClick={() => (running || finishedUnseen ? setShowRun(true) : startHere())}
           >
-            {running ? t('search.running') : t('search.run')}
+            {running
+              ? t('search.running')
+              : finishedUnseen
+                ? t('search.progress')
+                : t('search.run')}
           </button>
         }
       />
@@ -168,21 +193,33 @@ export default function SearchScreen() {
         <div className="mt-[var(--gap-wide)]">
           <Note tone="warn">{t('search.noSources')}</Note>
         </div>
+      ) : incomplete.length > 0 ? (
+        <div className="mt-[var(--gap-wide)]">
+          <Note tone="warn">
+            {t('search.sourcesIncomplete', {
+              names: incomplete.map((id) => byId.get(id)?.name ?? id).join(', '),
+            })}
+          </Note>
+        </div>
       ) : null}
 
-      {run.state !== 'idle' ? (
-        <RunProgress
-          state={run.state}
-          progress={run.progress}
-          lines={run.lines}
-          found={run.found}
-          error={run.error}
-          onStop={run.cancel}
-          onRetry={startHere}
-          onSeeResults={() =>
-            navigate(run.recordedId ? `/results?run=${run.recordedId}` : '/results')
-          }
-        />
+      {showRun && run.state !== 'idle' ? (
+        <Dialog title={t('search.progress')} onClose={() => setShowRun(false)}>
+          <RunProgress
+            state={run.state}
+            progress={run.progress}
+            lines={run.lines}
+            found={run.found}
+            error={run.error}
+            errors={run.errors}
+            onStop={run.cancel}
+            onRetry={startHere}
+            onSeeResults={() => {
+              setShowRun(false);
+              navigate(run.recordedId ? `/results?run=${run.recordedId}` : '/results');
+            }}
+          />
+        </Dialog>
       ) : null}
 
       <Section label={t('search.sources')}>

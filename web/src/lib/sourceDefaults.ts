@@ -13,7 +13,7 @@
  * and only lives in one place.
  */
 
-import type { SearchProfile, SourceManifest } from '@/lib/types';
+import type { SearchProfile, SourceChoice, SourceManifest } from '@/lib/types';
 
 /**
  * The same comparison the server makes (`jobsheet.core.matching.fold`).
@@ -86,4 +86,59 @@ export function deriveSourceParams(
   }
 
   return params;
+}
+
+/**
+ * Whether every field a source marks `required` actually has a value.
+ *
+ * The run button used to check only "is any source ticked", so a Workable or
+ * Lever card left with an empty slug would still start a run -- and then fail
+ * with nothing on screen to say why. This is the check that catches it before
+ * the request ever leaves the browser.
+ */
+export function sourceIsReady(source: SourceManifest, params: Record<string, unknown>): boolean {
+  return source.params
+    .filter((spec) => spec.required)
+    .every((spec) => {
+      const value = params[spec.name];
+      return typeof value === 'string' ? value.trim() !== '' : value != null && value !== '';
+    });
+}
+
+/** Every saved source choice passes {@link sourceIsReady} against its manifest.
+    A source id the manifest no longer knows about is treated as ready --
+    there is nothing left to validate it against. */
+export function allSourcesReady(
+  sources: SourceChoice[],
+  manifests: SourceManifest[],
+): boolean {
+  const byId = new Map(manifests.map((one) => [one.id, one]));
+  return sources.every((choice) => {
+    const manifest = byId.get(choice.source_id);
+    return !manifest || sourceIsReady(manifest, choice.params ?? {});
+  });
+}
+
+/** The one parameter name, per ATS source, that is the board/account slug a
+    person copies out of the company's careers-page address. */
+const ATS_SLUG_PARAM: Record<string, string> = {
+  workable: 'account',
+  ashby: 'board',
+  greenhouse: 'board',
+  lever: 'company',
+};
+
+/**
+ * A slug field forgives a pasted full address.
+ *
+ * The four ATS sources all ask for the same kind of value -- the last segment
+ * of a URL like `jobs.lever.co/acme` -- and pasting the whole address instead
+ * of just `acme` is an easy, common mistake for exactly the fields these
+ * sources need. Anything else is returned trimmed and otherwise untouched.
+ */
+export function normalizeAtsSlug(sourceId: string, paramName: string, value: string): string {
+  const trimmed = value.trim();
+  if (ATS_SLUG_PARAM[sourceId] !== paramName || !trimmed.includes('/')) return trimmed;
+  const withoutHost = trimmed.replace(/^https?:\/\//i, '').replace(/^[^/]+\//, '');
+  return withoutHost.split(/[/?#]/)[0] || trimmed;
 }

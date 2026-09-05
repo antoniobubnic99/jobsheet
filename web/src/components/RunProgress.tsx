@@ -8,7 +8,10 @@
  *
  * So the bars come first -- one line per source, a name, a rule and a
  * percentage -- and the commentary moves behind a disclosure for the times when
- * something has gone wrong and the detail is the point.
+ * something has gone wrong and the detail is the point. A source that failed
+ * gets one more thing: the actual reason, not just a red bar -- a wrong slug
+ * and a network outage look identical as a colour, and only one of them is
+ * something the user can fix.
  */
 
 import { useEffect, useRef } from 'react';
@@ -16,7 +19,6 @@ import { useTranslation } from 'react-i18next';
 
 import type { SourceProgress } from '@/lib/types';
 import type { RunState } from '@/lib/useSearchRun';
-import { Section } from '@/components/primitives';
 
 /** Bars are drawn from the server's percentage; this is only their colour. */
 function toneOf(phase: SourceProgress['phase']): string {
@@ -25,40 +27,51 @@ function toneOf(phase: SourceProgress['phase']): string {
   return 'var(--accent)';
 }
 
-function SourceBar({ entry }: { entry: SourceProgress }) {
+function SourceBar({ entry, reason }: { entry: SourceProgress; reason?: string }) {
   const { t } = useTranslation();
   const tone = toneOf(entry.phase);
 
   return (
-    <li className="flex items-center gap-[var(--gap)] py-[var(--gap-hair)]">
-      <span className="min-w-[9rem] shrink-0 truncate text-[var(--text-small)] font-semibold">
-        {entry.source_id}
-      </span>
+    <li>
+      <div className="flex items-center gap-[var(--gap)] py-[var(--gap-hair)]">
+        <span className="min-w-[9rem] shrink-0 truncate text-[var(--text-small)] font-semibold">
+          {entry.source_id}
+        </span>
 
-      <span
-        className="h-[0.5rem] flex-1 overflow-hidden rounded-[var(--radius-round)] bg-[var(--ground-sunk)]"
-        role="progressbar"
-        aria-valuenow={entry.percent}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={`${entry.source_id} — ${t(`search.phase.${entry.phase}`)}`}
-      >
         <span
-          className="block h-full rounded-[var(--radius-round)] transition-[width] duration-500 ease-out"
-          style={{ width: `${entry.percent}%`, background: tone }}
-        />
-      </span>
+          className="h-[0.5rem] flex-1 overflow-hidden rounded-[var(--radius-round)] bg-[var(--ground-sunk)]"
+          role="progressbar"
+          aria-valuenow={entry.percent}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`${entry.source_id} — ${t(`search.phase.${entry.phase}`)}`}
+        >
+          <span
+            className="block h-full rounded-[var(--radius-round)] transition-[width] duration-500 ease-out"
+            style={{ width: `${entry.percent}%`, background: tone }}
+          />
+        </span>
 
-      <span
-        className="mono w-[3.5rem] shrink-0 text-right text-[var(--text-micro)] tabular-nums"
-        style={{ color: tone }}
-      >
-        {entry.percent}%
-      </span>
+        <span
+          className="mono w-[3.5rem] shrink-0 text-right text-[var(--text-micro)] tabular-nums"
+          style={{ color: tone }}
+        >
+          {entry.percent}%
+        </span>
 
-      <span className="hidden w-[7rem] shrink-0 text-[var(--text-micro)] text-[var(--ink-faint)] sm:block">
-        {t(`search.phase.${entry.phase}`)}
-      </span>
+        <span className="hidden w-[7rem] shrink-0 text-[var(--text-micro)] text-[var(--ink-faint)] sm:block">
+          {t(`search.phase.${entry.phase}`)}
+        </span>
+      </div>
+
+      {entry.phase === 'failed' && reason ? (
+        <p
+          className="pl-[9rem] text-[var(--text-micro)]"
+          style={{ color: 'var(--bad)' }}
+        >
+          {reason}
+        </p>
+      ) : null}
     </li>
   );
 }
@@ -69,6 +82,7 @@ export default function RunProgress({
   lines,
   found,
   error,
+  errors,
   onStop,
   onSeeResults,
   onRetry,
@@ -78,6 +92,7 @@ export default function RunProgress({
   lines: string[];
   found: number;
   error: string;
+  errors: Record<string, string>;
   onStop: () => void;
   onSeeResults: () => void;
   onRetry: () => void;
@@ -93,20 +108,19 @@ export default function RunProgress({
   const ended = state === 'failed' || state === 'cancelled';
 
   return (
-    <Section
-      label={t('search.progress')}
-      aside={
-        running ? (
+    <>
+      {running ? (
+        <div className="mb-[var(--gap)] flex justify-end">
           <button type="button" className="btn btn-quiet" onClick={onStop}>
             {t('search.stop')}
           </button>
-        ) : null
-      }
-    >
+        </div>
+      ) : null}
+
       {progress.length ? (
         <ul className="panel px-[var(--gap)] py-[var(--gap-tight)]">
           {progress.map((entry) => (
-            <SourceBar key={entry.source_id} entry={entry} />
+            <SourceBar key={entry.source_id} entry={entry} reason={errors[entry.source_id]} />
           ))}
         </ul>
       ) : (
@@ -187,6 +201,6 @@ export default function RunProgress({
           )}
         </div>
       </details>
-    </Section>
+    </>
   );
 }

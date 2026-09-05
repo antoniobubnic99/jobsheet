@@ -15,6 +15,7 @@
  * fields that look editable but are not would be worse than showing prose.
  */
 
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -23,7 +24,8 @@ import { api, ApiError, DEFAULT_SETUP } from '@/lib/api';
 import type { SearchSetup } from '@/lib/types';
 import { screenNumber } from '@/lib/screens';
 import { useSearchRun } from '@/lib/useSearchRun';
-import { Loading, Note, ScreenHeader, Section } from '@/components/primitives';
+import { allSourcesReady } from '@/lib/sourceDefaults';
+import { Dialog, Loading, Note, ScreenHeader, Section } from '@/components/primitives';
 import RunProgress from '@/components/RunProgress';
 
 const EDITOR = '/search/edit';
@@ -43,6 +45,11 @@ export default function HomeScreen() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const run = useSearchRun();
+  const [showRun, setShowRun] = useState(false);
+
+  // The same query key the editor uses, so a manifest fetched once is shared
+  // between both screens instead of asked for twice.
+  const sources = useQuery({ queryKey: ['sources'], queryFn: api.sources });
 
   // The same query key the editor uses, so both read one cached answer and the
   // summary can never disagree with the form behind it.
@@ -61,7 +68,17 @@ export default function HomeScreen() {
 
   const payload = setup.data?.payload;
   const profile = payload?.profile;
-  const ready = Boolean(payload?.sources.length);
+  const hasSources = Boolean(payload?.sources.length);
+  // A source ticked with an empty required field (a Workable slug left
+  // blank, say) used to be "ready" too, and would run straight into a
+  // failure the screen never explained. Once the manifest is in hand this
+  // also asks that every ticked source actually has what it needs.
+  const sourcesComplete = !sources.data || allSourcesReady(payload?.sources ?? [], sources.data.sources);
+  const ready = hasSources && sourcesComplete;
+  // A run that finished while the popup was closed must not be indistinguishable
+  // from having never run at all -- the button has to lead back to it, not
+  // quietly forget it happened and offer to start a new one instead.
+  const finishedUnseen = !showRun && run.state !== 'idle' && run.state !== 'running';
 
   const list = (values: string[] | undefined) => (values ?? []).join(' · ');
 
@@ -78,10 +95,21 @@ export default function HomeScreen() {
           <button
             type="button"
             className="btn btn-primary flex-[2] justify-center py-[var(--gap)] text-[var(--text-lead)]"
-            disabled={!ready || run.state === 'running'}
-            onClick={() => payload && run.start(payload.sources, payload.profile)}
+            disabled={run.state === 'idle' && !ready}
+            onClick={() => {
+              if (run.state === 'running' || finishedUnseen) {
+                setShowRun(true);
+              } else if (payload) {
+                run.start(payload.sources, payload.profile);
+                setShowRun(true);
+              }
+            }}
           >
-            {run.state === 'running' ? t('search.running') : t('search.run')}
+            {run.state === 'running'
+              ? t('search.running')
+              : finishedUnseen
+                ? t('search.progress')
+                : t('search.run')}
           </button>
           <button
             type="button"
@@ -95,11 +123,13 @@ export default function HomeScreen() {
         {setup.isLoading ? <Loading /> : null}
 
         {/* An account that predates the wizard has no setup. It is not an
-            error, it is a sentence pointing at the one screen that fixes it. */}
+            error, it is a sentence pointing at the one screen that fixes it.
+            A saved setup with an unfinished source gets a different sentence,
+            because "edit the search" is the wrong fix for "nothing is saved". */}
         {!setup.isLoading && !ready ? (
           <div className="mt-[var(--gap)]">
             <Note tone="warn">
-              {t('home.nothingSetUp')}{' '}
+              {hasSources ? t('home.sourceNeedsSetup') : t('home.nothingSetUp')}{' '}
               <button
                 type="button"
                 className="btn btn-bare px-0 underline"
@@ -112,19 +142,23 @@ export default function HomeScreen() {
         ) : null}
       </Section>
 
-      {run.state !== 'idle' ? (
-        <RunProgress
-          state={run.state}
-          progress={run.progress}
-          lines={run.lines}
-          found={run.found}
-          error={run.error}
-          onStop={run.cancel}
-          onRetry={() => payload && run.start(payload.sources, payload.profile)}
-          onSeeResults={() =>
-            navigate(run.recordedId ? `/results?run=${run.recordedId}` : '/results')
-          }
-        />
+      {showRun && run.state !== 'idle' ? (
+        <Dialog title={t('search.progress')} onClose={() => setShowRun(false)}>
+          <RunProgress
+            state={run.state}
+            progress={run.progress}
+            lines={run.lines}
+            found={run.found}
+            error={run.error}
+            errors={run.errors}
+            onStop={run.cancel}
+            onRetry={() => payload && run.start(payload.sources, payload.profile)}
+            onSeeResults={() => {
+              setShowRun(false);
+              navigate(run.recordedId ? `/results?run=${run.recordedId}` : '/results');
+            }}
+          />
+        </Dialog>
       ) : null}
 
       {profile ? (

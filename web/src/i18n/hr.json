@@ -72,6 +72,7 @@
     "running": "Tražim…",
     "stop": "Zaustavi",
     "noSources": "Prvo odaberi barem jedan izvor.",
+    "sourcesIncomplete": "Nedostaje podatak za: {{names}}. Otvori karticu izvora i upiši ga prije pokretanja.",
     "savedSearches": "Spremljene pretrage",
     "saveAs": "Spremi ovu pretragu",
     "namePlaceholder": "Daj joj ime",
@@ -486,6 +487,7 @@
     "summary": "Što ova pretraga traži",
     "edit": "Uredi pretragu",
     "contracts": "Vrste ugovora",
-    "nothingSetUp": "Ovaj račun još nema spremljenu pretragu."
+    "nothingSetUp": "Ovaj račun još nema spremljenu pretragu.",
+    "sourceNeedsSetup": "Jedan od odabranih izvora još nema upisan podatak koji traži."
   }
 }

@@ -27,6 +27,7 @@ import { BOARD_ORDER, type ApplicationStatus, type JobRow } from '@/lib/types';
 import { daysUntil, formatDate, formatWhen, hostOf } from '@/lib/format';
 import { Empty, Loading, Problem, ScreenHeader, StatusPill } from '@/components/primitives';
 import { screenNumber } from '@/lib/screens';
+import JobDetailDialog from '@/components/JobDetailDialog';
 import LetterDialog from '@/components/LetterDialog';
 
 const PAGE = 50;
@@ -45,6 +46,7 @@ export default function ResultsScreen() {
   const [status, setStatus] = useState<'' | ApplicationStatus>('');
   const [offset, setOffset] = useState(0);
   const [letterFor, setLetterFor] = useState<JobRow | null>(null);
+  const [openKey, setOpenKey] = useState<string | null>(null);
 
   /**
    * Ads kept during this visit.
@@ -92,6 +94,7 @@ export default function ResultsScreen() {
 
   const rows = page.data?.rows ?? [];
   const total = page.data?.total ?? 0;
+  const open = rows.find((row) => row.dedup_key === openKey) ?? null;
 
   const undecided = (row: JobRow) => row.status === 'new' && !kept.has(row.dedup_key);
   /** Everything on this page has been answered, so there is somewhere to go next. */
@@ -218,14 +221,17 @@ export default function ResultsScreen() {
                       </td>
 
                       <td className="max-w-[34rem] px-[var(--gap)] py-[var(--gap-tight)]">
-                        <a
-                          href={row.posting.url}
-                          target="_blank"
-                          rel="noreferrer noopener"
-                          className="font-semibold hover:text-[var(--accent)] hover:underline"
+                        {/* Opens the same detail dialog Tracking uses, rather
+                            than leaving straight for the original ad -- the
+                            status, the letter and the real "open ad" link now
+                            live in one place instead of two. */}
+                        <button
+                          type="button"
+                          className="text-left font-semibold hover:text-[var(--accent)] hover:underline"
+                          onClick={() => setOpenKey(row.dedup_key)}
                         >
                           {row.posting.title}
-                        </a>
+                        </button>
                         <div className="text-[var(--ink-soft)]">{row.posting.company}</div>
                         {row.note ? (
                           <div className="mt-[var(--gap-hair)] text-[var(--text-micro)] leading-snug text-[var(--ink-faint)]">
@@ -297,17 +303,10 @@ export default function ResultsScreen() {
                       </td>
 
                       <td className="whitespace-nowrap px-[var(--gap)] py-[var(--gap-tight)] text-right">
-                        {/* The pencil stays, but it no longer stands alone: a
-                            screen reader used to be handed the glyph itself. */}
-                        <button
-                          type="button"
-                          className="btn btn-bare gap-[var(--gap-hair)] text-[var(--text-micro)]"
-                          onClick={() => setLetterFor(row)}
-                          aria-label={`${t('results.letter')} — ${row.posting.title}`}
-                        >
-                          <span aria-hidden>✎</span>
-                          <span className="hidden sm:inline">{t('results.letter')}</span>
-                        </button>
+                        {/* Writing a letter now happens from the detail
+                            dialog (open it via the title), alongside the
+                            real "open ad" link and the status -- not as a
+                            second, disconnected action on the row. */}
                         <button
                           type="button"
                           className="btn btn-bare"
@@ -373,6 +372,24 @@ export default function ResultsScreen() {
           </div>
         ) : null}
       </div>
+
+      {open ? (
+        <JobDetailDialog
+          row={open}
+          order={BOARD_ORDER}
+          onClose={() => setOpenKey(null)}
+          onMove={(next) => move.mutate({ key: open.dedup_key, next })}
+          onDiscard={
+            open.status === 'skipped'
+              ? undefined
+              : () => move.mutate({ key: open.dedup_key, next: 'skipped' })
+          }
+          onWriteLetter={() => {
+            setLetterFor(open);
+            setOpenKey(null);
+          }}
+        />
+      ) : null}
 
       {letterFor ? (
         <LetterDialog row={letterFor} onClose={() => setLetterFor(null)} />

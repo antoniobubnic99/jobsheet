@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { deriveCountyFeeds, deriveSourceParams } from '@/lib/sourceDefaults';
+import {
+  allSourcesReady,
+  deriveCountyFeeds,
+  deriveSourceParams,
+  normalizeAtsSlug,
+  sourceIsReady,
+} from '@/lib/sourceDefaults';
 import { EMPTY_PROFILE, type ParamSpec, type SearchProfile, type SourceManifest } from '@/lib/types';
 
 function spec(overrides: Partial<ParamSpec>): ParamSpec {
@@ -133,5 +139,97 @@ describe('deriveSourceParams', () => {
       ],
     });
     expect(deriveSourceParams(greenhouse, profile, [])).toEqual({ remote_ok: false });
+  });
+});
+
+describe('sourceIsReady', () => {
+  const greenhouse = source({
+    id: 'greenhouse',
+    params: [
+      spec({ name: 'board', required: true, default: null }),
+      spec({ name: 'remote_ok', kind: 'boolean', required: false, default: false }),
+    ],
+  });
+
+  it('is not ready when a required field is missing', () => {
+    expect(sourceIsReady(greenhouse, {})).toBe(false);
+  });
+
+  it('is not ready when a required field is only whitespace', () => {
+    expect(sourceIsReady(greenhouse, { board: '   ' })).toBe(false);
+  });
+
+  it('is ready once every required field has a value', () => {
+    expect(sourceIsReady(greenhouse, { board: 'gitlab' })).toBe(true);
+  });
+
+  it('does not require an optional field', () => {
+    expect(sourceIsReady(greenhouse, { board: 'gitlab' })).toBe(true);
+  });
+
+  it('has nothing to check on a source with no required fields', () => {
+    const rss = source({ id: 'rss', params: [] });
+    expect(sourceIsReady(rss, {})).toBe(true);
+  });
+});
+
+describe('allSourcesReady', () => {
+  const greenhouse = source({
+    id: 'greenhouse',
+    params: [spec({ name: 'board', required: true, default: null })],
+  });
+
+  it('is false while any ticked source is missing a required value', () => {
+    const ready = allSourcesReady(
+      [
+        { source_id: 'greenhouse', params: {} },
+        { source_id: 'rss', params: { url: 'https://example.test/feed' } },
+      ],
+      [greenhouse],
+    );
+    expect(ready).toBe(false);
+  });
+
+  it('is true once every ticked source has what it needs', () => {
+    const ready = allSourcesReady([{ source_id: 'greenhouse', params: { board: 'gitlab' } }], [
+      greenhouse,
+    ]);
+    expect(ready).toBe(true);
+  });
+
+  it('treats a source id the manifest no longer lists as nothing to validate', () => {
+    const ready = allSourcesReady([{ source_id: 'retired', params: {} }], [greenhouse]);
+    expect(ready).toBe(true);
+  });
+});
+
+describe('normalizeAtsSlug', () => {
+  it('leaves a bare slug untouched, just trimmed', () => {
+    expect(normalizeAtsSlug('lever', 'company', '  acme  ')).toBe('acme');
+  });
+
+  it('strips a pasted full URL down to the slug', () => {
+    expect(normalizeAtsSlug('lever', 'company', 'https://jobs.lever.co/acme')).toBe('acme');
+    expect(normalizeAtsSlug('workable', 'account', 'apply.workable.com/acme-inc')).toBe(
+      'acme-inc',
+    );
+    expect(normalizeAtsSlug('greenhouse', 'board', 'https://job-boards.greenhouse.io/gitlab/')).toBe(
+      'gitlab',
+    );
+    expect(normalizeAtsSlug('ashby', 'board', 'https://jobs.ashbyhq.com/ashby?utm=x')).toBe(
+      'ashby',
+    );
+  });
+
+  it('leaves a field that is not the slug param untouched', () => {
+    expect(normalizeAtsSlug('greenhouse', 'company', 'https://example.test/x')).toBe(
+      'https://example.test/x',
+    );
+  });
+
+  it('leaves a non-ATS source untouched', () => {
+    expect(normalizeAtsSlug('rss', 'url', 'https://example.test/feed')).toBe(
+      'https://example.test/feed',
+    );
   });
 });

@@ -223,6 +223,20 @@ class TestFailures:
         await search(on_progress=lines.append)
         assert any("Searching" in line for line in lines)
 
+    async def test_a_failed_sources_reason_reaches_the_log(self) -> None:
+        """The exception class alone ("HttpError") tells a user nothing about
+        whether they typed the wrong slug or the site is just down -- the
+        actual message has to reach the same line the class name does."""
+        lines: list[str] = []
+        FakeSource.postings = [ad(1)]
+        await run_search(
+            [SourceRequest("fake"), SourceRequest("broken")],
+            GIS,
+            today=TODAY,
+            on_progress=lines.append,
+        )
+        assert any("the server is on fire" in line for line in lines)
+
 
 class TestBuildNote:
     def test_omits_what_is_not_known(self) -> None:

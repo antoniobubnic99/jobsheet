@@ -32,31 +32,35 @@
   --rule-strong: oklch(82% 0.01 255);
 
   /* ---- accent ------------------------------------------------------------
-     One ink-blue, used for the thing you act on and nothing else. */
-  --accent: oklch(48% 0.15 258);
-  --accent-hover: oklch(41% 0.155 258);
+     One ink-blue, used for the thing you act on and nothing else. Pushed to
+     as saturated as it can get at this lightness before sRGB would clip it
+     anyway -- livelier, not a different colour, and contrast only improves. */
+  --accent: oklch(48% 0.17 258);
+  --accent-hover: oklch(40% 0.148 258);
   --accent-soft: oklch(95% 0.03 258);
   --accent-ink: oklch(100% 0 0);
 
   /* ---- status ------------------------------------------------------------
      Semantic, not decorative: each hue means one stage and never anything
-     else, so the board reads as a progression rather than as a palette. */
+     else, so the board reads as a progression rather than as a palette.
+     `new` and `skipped` stay deliberately near-gray -- "nothing decided yet"
+     and "set aside" are not stages worth making vivid. */
   --status-new: oklch(55% 0.02 255);
   --status-new-soft: oklch(94.5% 0.008 255);
-  --status-applied: oklch(52% 0.13 245);
+  --status-applied: oklch(50% 0.126 245);
   --status-applied-soft: oklch(95% 0.03 245);
-  --status-interview: oklch(58% 0.13 75);
+  --status-interview: oklch(55% 0.116 75);
   --status-interview-soft: oklch(95.5% 0.045 80);
-  --status-offer: oklch(52% 0.13 150);
+  --status-offer: oklch(50% 0.1378 150);
   --status-offer-soft: oklch(95% 0.04 150);
-  --status-rejected: oklch(54% 0.15 20);
+  --status-rejected: oklch(52% 0.2 20);
   --status-rejected-soft: oklch(95.5% 0.03 20);
   --status-skipped: oklch(60% 0.012 255);
   --status-skipped-soft: oklch(95% 0.004 255);
 
-  --ok: oklch(50% 0.13 150);
-  --warn: oklch(58% 0.14 75);
-  --bad: oklch(54% 0.16 20);
+  --ok: oklch(50% 0.1378 150);
+  --warn: oklch(55% 0.116 75);
+  --bad: oklch(52% 0.2 20);
 
   /* ---- type --------------------------------------------------------------
      System stacks on purpose. The page is served under a CSP with no external
@@ -109,27 +113,27 @@
     --rule: oklch(31% 0.014 258);
     --rule-strong: oklch(41% 0.016 258);
 
-    --accent: oklch(72% 0.13 255);
-    --accent-hover: oklch(80% 0.12 255);
+    --accent: oklch(72% 0.145 255);
+    --accent-hover: oklch(80% 0.1 255);
     --accent-soft: oklch(30% 0.05 255);
     --accent-ink: oklch(16% 0.02 258);
 
     --status-new: oklch(72% 0.014 258);
     --status-new-soft: oklch(28% 0.01 258);
-    --status-applied: oklch(74% 0.11 245);
+    --status-applied: oklch(74% 0.135 245);
     --status-applied-soft: oklch(28% 0.05 245);
-    --status-interview: oklch(78% 0.11 78);
+    --status-interview: oklch(78% 0.15 78);
     --status-interview-soft: oklch(30% 0.05 78);
-    --status-offer: oklch(74% 0.12 150);
+    --status-offer: oklch(74% 0.17 150);
     --status-offer-soft: oklch(28% 0.05 150);
-    --status-rejected: oklch(72% 0.13 20);
+    --status-rejected: oklch(72% 0.16 20);
     --status-rejected-soft: oklch(29% 0.055 20);
     --status-skipped: oklch(64% 0.01 258);
     --status-skipped-soft: oklch(26% 0.008 258);
 
-    --ok: oklch(74% 0.12 150);
-    --warn: oklch(78% 0.11 78);
-    --bad: oklch(72% 0.13 20);
+    --ok: oklch(74% 0.17 150);
+    --warn: oklch(78% 0.15 78);
+    --bad: oklch(72% 0.16 20);
   }
 }
 
@@ -148,25 +152,25 @@
   --rule: oklch(31% 0.014 258);
   --rule-strong: oklch(41% 0.016 258);
 
-  --accent: oklch(72% 0.13 255);
-  --accent-hover: oklch(80% 0.12 255);
+  --accent: oklch(72% 0.145 255);
+  --accent-hover: oklch(80% 0.1 255);
   --accent-soft: oklch(30% 0.05 255);
   --accent-ink: oklch(16% 0.02 258);
 
   --status-new: oklch(72% 0.014 258);
   --status-new-soft: oklch(28% 0.01 258);
-  --status-applied: oklch(74% 0.11 245);
+  --status-applied: oklch(74% 0.135 245);
   --status-applied-soft: oklch(28% 0.05 245);
-  --status-interview: oklch(78% 0.11 78);
+  --status-interview: oklch(78% 0.15 78);
   --status-interview-soft: oklch(30% 0.05 78);
-  --status-offer: oklch(74% 0.12 150);
+  --status-offer: oklch(74% 0.17 150);
   --status-offer-soft: oklch(28% 0.05 150);
-  --status-rejected: oklch(72% 0.13 20);
+  --status-rejected: oklch(72% 0.16 20);
   --status-rejected-soft: oklch(29% 0.055 20);
   --status-skipped: oklch(64% 0.01 258);
   --status-skipped-soft: oklch(26% 0.008 258);
 
-  --ok: oklch(74% 0.12 150);
-  --warn: oklch(78% 0.11 78);
-  --bad: oklch(72% 0.13 20);
+  --ok: oklch(74% 0.17 150);
+  --warn: oklch(78% 0.15 78);
+  --bad: oklch(72% 0.16 20);
 }

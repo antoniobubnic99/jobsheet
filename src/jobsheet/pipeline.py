@@ -120,7 +120,7 @@ async def _fetch_one(
         postings = await source.fetch(request.params, ctx)
     except Exception as error:
         report.errors[request.source_id] = f"{type(error).__name__}: {error}"
-        ctx.report(f"  ! {request.source_id} failed: {type(error).__name__}")
+        ctx.report(f"  ! {request.source_id} failed: {type(error).__name__}: {error}")
         ctx.step(request.source_id, Phase.FAILED)
         return []
     report.harvested[request.source_id] = len(postings)
